@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% from "leads.html" import leads_table %}
+{% block content %}
+<p><a href="{{ url_for('index') }}">← All dealers</a></p>
+<h1>{{ dealer.dealer_name }} <span class="muted">({{ dealer.dealer_id }})</span></h1>
+
+<div class="card">
+    <h2>Dealer Details</h2>
+    <form method="post" action="{{ url_for('save_dealer') }}">
+        <input type="hidden" name="dealer_id" value="{{ dealer.dealer_id }}">
+        <div class="field">
+            <label>Dealer Name <span class="req">*</span></label>
+            <input name="dealer_name" value="{{ dealer.dealer_name }}">
+        </div>
+        <div class="field"><label>Address</label><input name="address" value="{{ dealer.address or '' }}"></div>
+        <div class="row">
+            <div class="field"><label>City</label><input name="city" value="{{ dealer.city or '' }}"></div>
+            <div class="field">
+                <label>State</label>
+                <select name="state"><option value=""></option>
+                {% for s in states %}<option value="{{ s }}" {{ 'selected' if dealer.state == s else '' }}>{{ s }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="field"><label>Zip</label><input name="zip" value="{{ dealer.zip or '' }}"></div>
+        </div>
+        <div class="row">
+            <div class="field"><label>Phone</label><input name="phone" value="{{ dealer.phone or '' }}"></div>
+            <div class="field">
+                <label>Lead Email Address <span class="req">*</span></label>
+                <input name="lead_email_address" value="{{ dealer.lead_email_address }}">
+            </div>
+        </div>
+        <div class="field">
+            <label>Banner Image URL <span class="optional">(optional)</span></label>
+            <input name="banner_url" value="{{ dealer.banner_url or '' }}" placeholder="https://...">
+        </div>
+        <button type="submit" class="btn">Save Details</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Product Access</h2>
+    {% if grants %}
+    <table class="tbl">
+        <thead><tr><th>Product</th><th>Link</th><th>Valid From</th><th>Valid To</th><th>Monthly $</th><th>Per-Lead $</th><th></th></tr></thead>
+        <tbody>
+        {% for g in grants %}
+        <tr>
+            <td>{{ g.product_code }}</td>
+            <td>
+                {% if g.url %}
+                <a href="{{ g.url }}" target="_blank" rel="noopener">Open ↗</a>
+                <button type="button" class="link-btn copy-link" data-url="{{ g.url }}" title="Copy link">copy</button>
+                {% else %}—{% endif %}
+            </td>
+            <td>{{ g.valid_from or '—' }}</td>
+            <td>{{ g.valid_to or 'open' }}</td>
+            <td>{{ '%.2f'|format(g.monthly_price) if g.monthly_price is not none else '—' }}</td>
+            <td>{{ '%.2f'|format(g.per_lead_price) if g.per_lead_price is not none else '—' }}</td>
+            <td>
+                <form method="post" action="{{ url_for('remove_grant', grant_id=g.id) }}" onsubmit="return confirm('Remove this grant?')">
+                    <input type="hidden" name="dealer_id" value="{{ dealer.dealer_id }}">
+                    <button class="link-btn" type="submit">remove</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="subtitle">No product grants yet — this dealer's forms are inactive until granted.</p>
+    {% endif %}
+
+    <h3>Add / Update Grant</h3>
+    <form method="post" action="{{ url_for('save_grant') }}">
+        <input type="hidden" name="dealer_id" value="{{ dealer.dealer_id }}">
+        <div class="row">
+            <div class="field">
+                <label>Product</label>
+                <select name="product_code">
+                {% for p in products %}<option value="{{ p.product_code }}">{{ p.product_name }} ({{ p.product_code }})</option>{% endfor %}
+                </select>
+            </div>
+            <div class="field"><label>Valid From</label><input type="date" name="valid_from"></div>
+            <div class="field"><label>Valid To <span class="optional">(blank = open)</span></label><input type="date" name="valid_to"></div>
+        </div>
+        <div class="row">
+            <div class="field"><label>Monthly Price</label><input type="number" step="0.01" name="monthly_price" placeholder="0.00"></div>
+            <div class="field"><label>Per-Lead Price</label><input type="number" step="0.01" name="per_lead_price" placeholder="0.00"></div>
+        </div>
+        <button type="submit" class="btn">Save Grant</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Trade-In Valuation</h2>
+    {% set labels = {
+        'adj_keys_1': 'Only 1 key (2 = baseline)',
+        'adj_keys_3plus': '3+ keys',
+        'adj_unrepaired_damage': 'Un-repaired damage',
+        'adj_engine_light': 'Engine light on',
+        'adj_airbag_light': 'Airbag light on',
+        'adj_brake_light': 'Brake light on',
+        'adj_aftermarket_exhaust': 'Aftermarket exhaust',
+        'adj_aftermarket_engine': 'Aftermarket engine components',
+        'adj_aftermarket_stereo': 'Aftermarket stereo / electronics'
+    } %}
+    <form method="post" action="{{ url_for('save_valuation') }}" id="val-form">
+        <input type="hidden" name="dealer_id" value="{{ dealer.dealer_id }}">
+        <div class="row">
+            <div class="field">
+                <label>Base Value Source</label>
+                <select name="base_source">
+                    <option value="retail" {{ 'selected' if vs.base_source == 'retail' else '' }}>Retail (inventory listings)</option>
+                    <option value="wholesale" {{ 'selected' if vs.base_source == 'wholesale' else '' }}>Wholesale (auction, 60 days)</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>Adjustment Unit</label>
+                <select name="adjustment_unit" id="adjustment_unit">
+                    <option value="dollar" {{ 'selected' if vs.adjustment_unit == 'dollar' else '' }}>Dollars ($)</option>
+                    <option value="percent" {{ 'selected' if vs.adjustment_unit == 'percent' else '' }}>Percent (%)</option>
+                </select>
+            </div>
+        </div>
+        <div class="row">
+            <div class="field">
+                <label>Displayed Range Spread (± in unit)</label>
+                <input type="number" step="any" name="range_spread" value="{{ vs.range_spread }}">
+            </div>
+            <div class="field">
+                <label>Mileage Rate ($/mile fallback)</label>
+                <input type="number" step="any" name="mileage_rate" value="{{ vs.mileage_rate }}">
+            </div>
+        </div>
+
+        <h3>Condition Adjustments <span class="optional">(signed; negative = deduct)</span></h3>
+        <div class="row" style="flex-wrap:wrap">
+        {% for f in cond_fields %}
+            <div class="field" style="flex:1 1 200px">
+                <label>{{ labels[f] }}</label>
+                <input type="number" step="any" name="{{ f }}" value="{{ vs[f] }}">
+            </div>
+        {% endfor %}
+        </div>
+
+        <button type="submit" class="btn">Save Valuation</button>
+        <button type="button" class="btn btn--ghost" id="reset-btn">Reset to recommended</button>
+    </form>
+</div>
+
+<script>
+(function () {
+    var REC = {{ recommended|tojson }};
+    document.getElementById('reset-btn').addEventListener('click', function () {
+        var unit = document.getElementById('adjustment_unit').value;
+        var rec = REC[unit] || REC['dollar'];
+        var form = document.getElementById('val-form');
+        Object.keys(rec).forEach(function (k) {
+            var el = form.elements[k];
+            if (el) el.value = rec[k];
+        });
+    });
+})();
+</script>
+
+<div class="card">
+    <h2>Credit Estimator</h2>
+    {% set apr_labels = {
+        'apr_exceptional': 'Exceptional (800–850)',
+        'apr_very_good': 'Very Good (740–799)',
+        'apr_good': 'Good (670–739)',
+        'apr_fair': 'Fair (580–669)',
+        'apr_poor': 'Poor (300–579)'
+    } %}
+    <form method="post" action="{{ url_for('save_credit_settings') }}" id="credit-form">
+        <input type="hidden" name="dealer_id" value="{{ dealer.dealer_id }}">
+
+        <h3>APR by estimated credit tier <span class="optional">(used-vehicle base, annual %)</span></h3>
+        <div class="row" style="flex-wrap:wrap">
+        {% for f in credit_apr_fields %}
+            <div class="field" style="flex:1 1 160px">
+                <label>{{ apr_labels[f] }}</label>
+                <input type="number" step="any" name="{{ f }}" value="{{ cs[f] }}">
+            </div>
+        {% endfor %}
+        </div>
+
+        <div class="row">
+            <div class="field">
+                <label>New-vehicle APR delta <span class="optional">(added when new; usually negative)</span></label>
+                <input type="number" step="any" name="new_apr_delta" value="{{ cs.new_apr_delta }}">
+            </div>
+            <div class="field">
+                <label>APR spread (± shown around the rate)</label>
+                <input type="number" step="any" name="apr_spread" value="{{ cs.apr_spread }}">
+            </div>
+        </div>
+        <div class="row">
+            <div class="field">
+                <label>Max term (months)</label>
+                <input type="number" step="1" name="max_term_months" value="{{ cs.max_term_months }}">
+            </div>
+            <div class="field">
+                <label>Max payment (% of gross monthly income)</label>
+                <input type="number" step="any" name="max_payment_pct" value="{{ cs.max_payment_pct }}">
+            </div>
+        </div>
+
+        <button type="submit" class="btn">Save Credit Settings</button>
+        <button type="button" class="btn btn--ghost" id="credit-reset-btn">Reset to recommended</button>
+    </form>
+</div>
+
+<script>
+(function () {
+    var REC = {{ recommended_credit|tojson }};
+    document.getElementById('credit-reset-btn').addEventListener('click', function () {
+        var form = document.getElementById('credit-form');
+        Object.keys(REC).forEach(function (k) {
+            var el = form.elements[k];
+            if (el) el.value = REC[k];
+        });
+    });
+})();
+</script>
+
+<div class="card">
+    <h2>Recent Leads <span class="muted">({{ leads|length }})</span></h2>
+    {{ leads_table(leads, {}, show_dealer=False) }}
+</div>
+
+<script>
+document.querySelectorAll('.copy-link').forEach(function (b) {
+    b.addEventListener('click', function () {
+        var url = b.getAttribute('data-url');
+        (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject())
+            .then(function () { var o = b.textContent; b.textContent = 'copied!'; setTimeout(function(){ b.textContent = o; }, 1200); })
+            .catch(function () { window.prompt('Copy this link:', url); });
+    });
+});
+</script>
+{% endblock %}

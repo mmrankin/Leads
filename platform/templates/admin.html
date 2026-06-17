@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Dealers</h1>
+
+<div class="card">
+    <h2>Add Dealer</h2>
+    <form method="post" action="{{ url_for('save_dealer') }}">
+        <div class="row">
+            <div class="field">
+                <label>DealerID <span class="req">*</span></label>
+                <input name="dealer_id">
+            </div>
+            <div class="field">
+                <label>Dealer Name <span class="req">*</span></label>
+                <input name="dealer_name">
+            </div>
+        </div>
+        <div class="field">
+            <label>Address</label>
+            <input name="address">
+        </div>
+        <div class="row">
+            <div class="field"><label>City</label><input name="city"></div>
+            <div class="field">
+                <label>State</label>
+                <select name="state"><option value=""></option>
+                {% for s in states %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="field"><label>Zip</label><input name="zip"></div>
+        </div>
+        <div class="row">
+            <div class="field"><label>Phone</label><input name="phone"></div>
+            <div class="field">
+                <label>Lead Email Address <span class="req">*</span></label>
+                <input name="lead_email_address">
+            </div>
+        </div>
+        <div class="field">
+            <label>Banner Image URL <span class="optional">(optional)</span></label>
+            <input name="banner_url" placeholder="https://...">
+        </div>
+        <button type="submit" class="btn">Add Dealer</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>All Dealers ({{ dealers|length }})</h2>
+    {% if dealers %}
+    <table class="tbl">
+        <thead><tr><th>DealerID</th><th>Name</th><th>City/State</th><th>Lead Email</th><th></th></tr></thead>
+        <tbody>
+        {% for d in dealers %}
+        <tr>
+            <td>{{ d.dealer_id }}</td>
+            <td>{{ d.dealer_name }}</td>
+            <td>{{ d.city or '' }}{{ ', ' + d.state if d.state else '' }}</td>
+            <td>{{ d.lead_email_address }}</td>
+            <td><a href="{{ url_for('dealer', dealer_id=d.dealer_id) }}">manage →</a></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="subtitle">No dealers yet. Add one above.</p>
+    {% endif %}
+</div>
+{% endblock %}

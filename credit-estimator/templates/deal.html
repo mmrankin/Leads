@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}The deal you have in mind{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>The deal you have in mind</h1>
+    <p class="subtitle">Add these to see an estimated payment and what you could afford. All optional.</p>
+
+    <form method="post" action="{{ url_for('deal', dealer_id=dealer.dealer_id) }}">
+        <div class="q">
+            <label>New or used?</label>
+            <div class="seg">
+                {% for value, label in [('used', 'Used'), ('new', 'New')] %}
+                <label class="seg-opt">
+                    <input type="radio" name="vehicle_condition" value="{{ value }}"
+                           {{ 'checked' if (form.vehicle_condition or 'used') == value else '' }}>
+                    <span>{{ label }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="field">
+                <label for="monthly_payment">Monthly payment</label>
+                <input type="number" inputmode="numeric" id="monthly_payment" name="monthly_payment"
+                       value="{{ form.monthly_payment or '' }}" placeholder="$ / month">
+            </div>
+            <div class="field">
+                <label for="down_payment">Down payment</label>
+                <input type="number" inputmode="numeric" id="down_payment" name="down_payment"
+                       value="{{ form.down_payment or '' }}" placeholder="$">
+            </div>
+        </div>
+        <div class="row">
+            <div class="field">
+                <label for="term_months">Loan term</label>
+                <select id="term_months" name="term_months">
+                    {% for mo in [36, 48, 60, 72, 84] %}
+                    <option value="{{ mo }}" {{ 'selected' if (form.term_months|string) == (mo|string) else ('selected' if (not form.term_months and mo == 72) else '') }}>{{ mo }} months</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label for="annual_income">Annual income <span class="optional">(for max-affordable)</span></label>
+                <input type="number" inputmode="numeric" id="annual_income" name="annual_income"
+                       value="{{ form.annual_income or '' }}" placeholder="$ per year">
+            </div>
+        </div>
+
+        <div class="field">
+            <label for="trade_value">Trade-in value</label>
+            <div class="trade-row">
+                <input type="number" inputmode="numeric" id="trade_value" name="trade_value"
+                       value="{{ form.trade_value or '' }}" placeholder="$ (optional)">
+                <a class="btn btn--ghost trade-btn" href="{{ url_for('trade_in_handoff', dealer_id=dealer.dealer_id) }}">Value my trade-in →</a>
+            </div>
+            <p class="hint">Don't know it? Tap “Value my trade-in” — we'll carry your details over so you won't re-enter them.</p>
+        </div>
+
+        <button type="submit" class="btn btn--block">See my estimate</button>
+        <p class="disclaimer">
+            This is a self-reported estimate for informational purposes only. It is
+            not a credit report or pull, and not a guarantee of financing, terms, or
+            approval. Your actual score and offers depend on a full review of your
+            credit by a lender.
+        </p>
+    </form>
+</div>
+{% endblock %}

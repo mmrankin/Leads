@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Runs the Cloudflare Tunnel persistently as a user LaunchAgent.
+     Copy to ~/Library/LaunchAgents/ and adjust the cloudflared path if needed
+     (Apple Silicon: /opt/homebrew/bin; Intel: /usr/local/bin).
+     Alternative: `sudo cloudflared service install` sets up a system daemon. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dealerplatform.tunnel</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/cloudflared</string>
+        <string>tunnel</string>
+        <string>--config</string>
+        <string>/Users/markrankin/.cloudflared/config.yml</string>
+        <string>run</string>
+        <string>dealer-platform</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/markrankin/claude/deploy/tunnel.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/markrankin/claude/deploy/tunnel.err.log</string>
+</dict>
+</plist>

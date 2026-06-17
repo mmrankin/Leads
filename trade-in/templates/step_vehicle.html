@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Trade-In — Your Vehicle{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>What are you trading in?</h1>
+    <p class="subtitle">Tell us about your vehicle to get an estimated value.</p>
+
+    {% if errors and errors.vehicle %}<div class="alert">{{ errors.vehicle }}</div>{% endif %}
+
+    <form method="post" action="{{ url_for('step_vehicle', dealer_id=dealer.dealer_id) }}" novalidate>
+    {% if ymm %}
+        <div class="field">
+            <label for="vehicle_year">Year</label>
+            <select id="vehicle_year" name="vehicle_year" data-selected="{{ form.vehicle_year or '' }}">
+                <option value="">Select year…</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="vehicle_make">Make</label>
+            <select id="vehicle_make" name="vehicle_make" data-selected="{{ form.vehicle_make or '' }}" disabled>
+                <option value="">Select make…</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="vehicle_model">Model</label>
+            <select id="vehicle_model" name="vehicle_model" data-selected="{{ form.vehicle_model or '' }}" disabled>
+                <option value="">Select model…</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="vehicle_trim">Trim <span class="optional">(optional)</span></label>
+            <select id="vehicle_trim" name="vehicle_trim" data-selected="{{ form.vehicle_trim or '' }}" disabled>
+                <option value="">Select trim…</option>
+            </select>
+        </div>
+    {% else %}
+        {% for f, lbl in [('vehicle_year','Year'),('vehicle_make','Make'),('vehicle_model','Model'),('vehicle_trim','Trim')] %}
+        <div class="field"><label for="{{ f }}">{{ lbl }}</label>
+            <input type="text" id="{{ f }}" name="{{ f }}" value="{{ form[f] or '' }}"></div>
+        {% endfor %}
+    {% endif %}
+        <button type="submit" class="btn btn--block">Continue</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}{% if ymm %}
+<script>
+(function () {
+    var y = document.getElementById('vehicle_year'),
+        m = document.getElementById('vehicle_make'),
+        mo = document.getElementById('vehicle_model'),
+        t = document.getElementById('vehicle_trim');
+    function norm(x){return String(x==null?'':x).trim().toLowerCase();}
+    function fill(sel, items, ph, keep){
+        sel.innerHTML='';
+        var o=document.createElement('option'); o.value=''; o.textContent=ph; sel.appendChild(o);
+        items.forEach(function(v){var x=document.createElement('option');x.value=v;x.textContent=v;
+            if(keep&&norm(keep)===norm(v))x.selected=true; sel.appendChild(x);});
+    }
+    function load(u){return fetch(u).then(function(r){return r.ok?r.json():[];}).catch(function(){return [];});}
+    function makes(year, km, kmo, kt){
+        m.disabled=true;mo.disabled=true;t.disabled=true;
+        fill(m,[],'Select make…');fill(mo,[],'Select model…');fill(t,[],'Select trim…');
+        if(!year)return;
+        load('/api/vehicle/makes?year='+encodeURIComponent(year)).then(function(d){
+            fill(m,d,'Select make…',km); m.disabled=false; if(km) models(year,km,kmo,kt);});
+    }
+    function models(year, make, kmo, kt){
+        mo.disabled=true;t.disabled=true; fill(mo,[],'Select model…');fill(t,[],'Select trim…');
+        if(!year||!make)return;
+        load('/api/vehicle/models?year='+encodeURIComponent(year)+'&make='+encodeURIComponent(make)).then(function(d){
+            fill(mo,d,'Select model…',kmo); mo.disabled=false; if(kmo) trims(year,make,kmo,kt);});
+    }
+    function trims(year, make, model, kt){
+        t.disabled=true; fill(t,[],'Select trim…');
+        if(!year||!make||!model)return;
+        load('/api/vehicle/trims?year='+encodeURIComponent(year)+'&make='+encodeURIComponent(make)+'&model='+encodeURIComponent(model)).then(function(d){
+            fill(t,d,'Select trim…',kt); t.disabled=false;});
+    }
+    y.addEventListener('change',function(){makes(y.value);});
+    m.addEventListener('change',function(){models(y.value,m.value);});
+    mo.addEventListener('change',function(){trims(y.value,m.value,mo.value);});
+    var ky=y.getAttribute('data-selected'),km=m.getAttribute('data-selected'),
+        kmo=mo.getAttribute('data-selected'),kt=t.getAttribute('data-selected');
+    load('/api/vehicle/years').then(function(d){ fill(y,d,'Select year…',ky); if(ky) makes(ky,km,kmo,kt); });
+})();
+</script>
+{% endif %}{% endblock %}

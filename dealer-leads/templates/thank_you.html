@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Thank You{% endblock %}
+{% block content %}
+<div class="card card--center">
+    <div class="checkmark">&#10003;</div>
+    <h1>Thank You!</h1>
+    <p class="subtitle">
+        Your information has been sent to {{ dealer.dealer_name }}.
+        A representative will contact you shortly.
+    </p>
+    <a class="btn btn--ghost" href="{{ url_for('lead_form', dealer_id=dealer.dealer_id) }}">Submit another request</a>
+</div>
+{% endblock %}

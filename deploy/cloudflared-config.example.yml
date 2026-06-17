@@ -1,0 +1,19 @@
+# Cloudflare Tunnel ingress for the dealer platform.
+# Copy to ~/.cloudflared/config.yml and fill in <TUNNEL_ID> and YOURDOMAIN.com.
+# Each subdomain maps to one local app (compute stays on the LAN so it can reach
+# SQL Server 10.1.1.10).
+
+tunnel: dealer-platform
+credentials-file: /Users/markrankin/.cloudflared/<TUNNEL_ID>.json
+
+ingress:
+  - hostname: trade.YOURDOMAIN.com      # Trade-In widget
+    service: http://localhost:5001
+  - hostname: leads.YOURDOMAIN.com      # Dealer Lead Form
+    service: http://localhost:5002
+  - hostname: credit.YOURDOMAIN.com     # Credit Estimator
+    service: http://localhost:5003
+  - hostname: admin.YOURDOMAIN.com      # Platform Admin (lock this down — see DEPLOY.md)
+    service: http://localhost:5050
+  # Everything else gets a 404.
+  - service: http_status:404

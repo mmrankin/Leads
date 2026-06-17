@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Lead #{{ lead.id }}{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('leads') }}">← All leads</a></p>
+<h1>
+    {% set plabels = {'TRADE_IN': ('trade', 'Trade-In'), 'CREDIT_EST': ('credit', 'Credit'), 'LEAD_FORM': ('lead', 'Lead Form')} %}
+    {% set pinfo = plabels.get(product, ('lead', 'Lead Form')) %}
+    {{ (lead.first_name ~ ' ' ~ lead.last_name)|trim or 'Lead' }}
+    <span class="pill pill--{{ pinfo[0] }}">{{ pinfo[1] }}</span>
+</h1>
+<p class="subtitle">
+    Lead #{{ lead.id }}
+    {% if dealer %}· <a href="{{ url_for('dealer', dealer_id=dealer.dealer_id) }}">{{ dealer.dealer_name }}</a>{% endif %}
+</p>
+
+{% for title, fields in groups %}
+<div class="card">
+    <h2>{{ title }}</h2>
+    <table class="tbl kv">
+        <tbody>
+        {% for f in fields %}{% if f in lead %}
+        <tr>
+            <th>{{ labels.get(f, f) }}</th>
+            <td>
+                {% set v = lead[f] %}
+                {% if v is none or v == '' %}<span class="muted">—</span>
+                {% elif f == 'tc_agreed' %}{{ 'Yes' if v else 'No' }}
+                {% elif f in ('value_low','value_estimate','value_high','loan_balance',
+                              'vehicle_price','down_payment','trade_value','annual_income',
+                              'amount_financed','monthly_payment','max_vehicle_price') %}${{ '{:,.0f}'.format(v|float) }}
+                {% elif f in ('apr','apr_low','apr_high') %}{{ v }}%
+                {% else %}{{ v }}{% endif %}
+            </td>
+        </tr>
+        {% endif %}{% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endfor %}
+
+{% if adf_xml %}
+<div class="card">
+    <h2>ADF / XML</h2>
+    <pre class="adf">{{ adf_xml }}</pre>
+</div>
+{% endif %}
+{% endblock %}

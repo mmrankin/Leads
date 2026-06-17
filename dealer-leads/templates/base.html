@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Get in Touch{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    {# Banner: a per-link ?IMG= override wins, else the dealer's configured
+       banner, else nothing (no branding). #}
+    {% set banner = banner_override|default(none) or (dealer.banner_url if dealer else None) %}
+    {% if banner %}
+    <header class="banner">
+        <img src="{{ banner }}" alt="{{ dealer.dealer_name }}">
+    </header>
+    {% else %}
+    <header class="banner banner--empty" aria-hidden="true"></header>
+    {% endif %}
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        {% if dealer %}<span>{{ dealer.dealer_name }}</span>{% endif %}
+    </footer>
+</body>
+</html>

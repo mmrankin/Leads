@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Leads{% endblock %}
+{% block content %}
+<h1>Leads</h1>
+<div class="card">
+    <div class="tabs">
+        <a class="tab {{ 'is-active' if not product else '' }}" href="{{ url_for('leads') }}">All</a>
+        <a class="tab {{ 'is-active' if product == 'LEAD_FORM' else '' }}" href="{{ url_for('leads', product='LEAD_FORM') }}">Lead Form</a>
+        <a class="tab {{ 'is-active' if product == 'TRADE_IN' else '' }}" href="{{ url_for('leads', product='TRADE_IN') }}">Trade-In</a>
+        <a class="tab {{ 'is-active' if product == 'CREDIT_EST' else '' }}" href="{{ url_for('leads', product='CREDIT_EST') }}">Credit</a>
+    </div>
+    {{ leads_table(leads, dealers, show_dealer=True) }}
+</div>
+{% endblock %}
+
+{% macro leads_table(rows, dealers, show_dealer=False) %}
+{% if rows %}
+<table class="tbl">
+    <thead><tr>
+        <th>When</th><th>Product</th>{% if show_dealer %}<th>Dealer</th>{% endif %}
+        <th>Customer</th><th>Contact</th><th>Vehicle</th><th>Value</th><th>Email</th>
+    </tr></thead>
+    <tbody>
+    {% set plabels = {'TRADE_IN': ('trade', 'Trade-In'), 'CREDIT_EST': ('credit', 'Credit'), 'LEAD_FORM': ('lead', 'Lead Form')} %}
+    {% for l in rows %}
+    {% set pinfo = plabels.get(l.product, ('lead', 'Lead Form')) %}
+    <tr>
+        <td class="nowrap">{{ l.created_at[:16] if l.created_at else '' }}</td>
+        <td><span class="pill pill--{{ pinfo[0] }}">{{ pinfo[1] }}</span></td>
+        {% if show_dealer %}<td>{{ dealers.get(l.dealer_id, l.dealer_id) }}</td>{% endif %}
+        <td><a href="{{ url_for('lead_detail', product=l.product, lead_id=l.id) }}">{{ l.name }}</a></td>
+        <td>
+            {% if l.email %}<div>{{ l.email }}</div>{% endif %}
+            {% if l.phone %}<div class="muted">{{ l.phone }}</div>{% endif %}
+        </td>
+        <td>{{ l.vehicle or '—' }}</td>
+        <td>{{ l.value or '—' }}</td>
+        <td>
+            <span class="dot dot--{{ l.email_status }}"></span>{{ l.email_status or '—' }}
+            {% if l.stage == 'contact' %}<div class="muted">incomplete</div>{% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="subtitle">No leads yet.</p>
+{% endif %}
+{% endmacro %}

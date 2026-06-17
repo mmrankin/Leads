@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% from "_offer_cert.html" import offer_cert %}
+{% block title %}Your Trade-In Offer{% endblock %}
+{% block content %}
+
+{% if serial %}
+{{ offer_cert(serial, vehicle_desc,
+              valuation.range_low if valuation and valuation.ok else none,
+              valuation.range_high if valuation and valuation.ok else none,
+              barcode_svg, dealer, none) }}
+{% endif %}
+
+<div class="card card--center">
+    {% if valuation and valuation.ok %}
+    <p class="subtitle">Based on recent market data — a preliminary estimate, not a final offer.</p>
+    {% else %}
+    <h1>Thank You!</h1>
+    <p class="subtitle">
+        Your trade-in details have been sent to {{ dealer.dealer_name }}. A
+        representative will follow up with your appraisal shortly.
+    </p>
+    {% endif %}
+    {% if emailed == '1' %}<div class="alert alert--ok">Your offer was emailed to you.</div>
+    {% elif emailed in ['fail','no'] %}<div class="alert">Sorry, we couldn't email your offer just now.</div>{% endif %}
+    <div class="share">
+        {% if has_email and email_post %}
+        <form method="post" action="{{ email_post }}" style="flex:1;margin:0;">
+            <button type="submit" class="btn btn--block">Email me my offer</button>
+        </form>
+        {% endif %}
+        <a class="btn btn--ghost" href="{{ sms }}">Text me my offer</a>
+    </div>
+</div>
+
+{% if valuation and valuation.similar_count is not none %}
+<div class="card">
+    {% if vehicle_desc %}<p class="metric-vehicle">{{ vehicle_desc }}</p>{% endif %}
+    <div class="metric-row">
+        <span class="metric-label">Similar Vehicles for Sale</span>
+        <span class="metric-value">{{ "{:,}".format(valuation.similar_count) }}</span>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <h2>Visit {{ dealer.dealer_name }}</h2>
+    {% set addr = [dealer.address, dealer.city, dealer.state, dealer.zip]|select|join(', ') %}
+    {% if addr %}<p class="subtitle">{{ addr }}</p>{% endif %}
+    <div class="map-wrap">
+        <iframe class="map" src="{{ maps_embed }}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+                title="Map to {{ dealer.dealer_name }}"></iframe>
+    </div>
+    <div class="map-actions">
+        <a class="btn btn--ghost btn--block" href="{{ maps_link }}" target="_blank" rel="noopener">Open in Google Maps</a>
+    </div>
+    {% if qr_svg %}
+    <div class="qr">
+        <div class="qr-img">{{ qr_svg|safe }}</div>
+        <p class="qr-cap">Scan to get directions on your phone</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

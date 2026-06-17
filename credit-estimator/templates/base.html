@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>{% block title %}Credit Estimate{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    {% set banner = banner_override|default(none) or (dealer.banner_url if dealer else None) %}
+    {% if banner %}
+    <header class="banner"><img src="{{ banner }}" alt="{{ dealer.dealer_name }}"></header>
+    {% else %}
+    <header class="banner banner--empty" aria-hidden="true"></header>
+    {% endif %}
+
+    {% set step = step|default(0) %}
+    {% if step in [1, 2, 3, 4] %}
+    <div class="steps">
+        {% for n, label in [(1, 'Your Info'), (2, 'Credit'), (3, 'Your Deal'), (4, 'Your Estimate')] %}
+        <div class="step {{ 'is-done' if n < step else '' }} {{ 'is-active' if n == step else '' }}">
+            <span class="step-dot">{{ n }}</span>
+            <span class="step-label">{{ label }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        {% if dealer %}<span>{{ dealer.dealer_name }}</span>{% endif %}
+    </footer>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

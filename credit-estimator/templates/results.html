@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Your Credit Estimate{% endblock %}
+{% block content %}
+<div class="card card--center">
+    <h1>Your Estimated Credit Score Range</h1>
+    <div class="value-range">{{ est.range_low }} – {{ est.range_high }}</div>
+    <p class="tier-badge">{{ est.tier }}</p>
+    <p class="subtitle">{{ est.approval }}</p>
+</div>
+
+{% if est.vehicle_price %}
+<div class="card">
+    <h2>What ${{ "{:,}".format(est.monthly_payment) }}/mo could buy</h2>
+    <p class="subtitle">At an estimated {{ est.apr }}% APR over {{ est.term_months }} months
+       ({{ est.vehicle_condition }} vehicle):</p>
+    <div class="stat-grid">
+        <div class="stat">
+            <div class="stat-num">${{ "{:,}".format(est.vehicle_price) }}</div>
+            <div class="stat-cap">Estimated vehicle price
+                {% if est.vehicle_price_low != est.vehicle_price_high %}
+                (${{ "{:,}".format(est.vehicle_price_low) }}–${{ "{:,}".format(est.vehicle_price_high) }})
+                {% endif %}
+            </div>
+        </div>
+        <div class="stat">
+            <div class="stat-num">${{ "{:,}".format(est.amount_financed) }}</div>
+            <div class="stat-cap">Amount financed over {{ est.term_months }} months</div>
+        </div>
+        <div class="stat">
+            <div class="stat-num">{{ est.apr }}%</div>
+            <div class="stat-cap">Estimated APR ({{ est.apr_low }}%–{{ est.apr_high }}%)</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if est.affordability %}
+<div class="card">
+    <h2>What you could afford</h2>
+    <p class="subtitle">
+        Based on your income and an estimated payment of about
+        ${{ "{:,}".format(est.affordability.max_monthly_payment) }}/mo over
+        {{ est.affordability.term_months }} months at {{ est.apr }}% APR:
+    </p>
+    <div class="value-range value-range--sm">Up to ${{ "{:,}".format(est.affordability.max_vehicle_price) }}</div>
+    <p class="hint">Estimated max vehicle price (loan of about
+        ${{ "{:,}".format(est.affordability.max_loan) }} plus your down payment and trade).</p>
+</div>
+{% endif %}
+
+<div class="card card--center">
+    <p class="subtitle">{{ dealer.dealer_name }} has your information and will reach out to help you finalize real financing options.</p>
+    <a class="btn btn--ghost btn--block" href="{{ url_for('lead_form', dealer_id=dealer.dealer_id) }}">Start over</a>
+</div>
+
+<p class="disclaimer">
+    This estimate is based on the information you provided and is for informational
+    purposes only. It is not a credit report, a credit pull, or an offer or guarantee
+    of credit, rate, term, or approval. Actual results depend on a lender's review of
+    your credit.
+</p>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Trade-In — Your Info{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>Where should we send your estimate?</h1>
+    <p class="subtitle">
+        {{ form.vehicle_year }} {{ form.vehicle_make }} {{ form.vehicle_model }}{{ ' ' + form.vehicle_trim if form.vehicle_trim else '' }}
+    </p>
+
+    {% if errors.contact %}<div class="alert">{{ errors.contact }}</div>{% endif %}
+
+    <form method="post" action="{{ url_for('step_contact', dealer_id=dealer.dealer_id) }}" novalidate>
+        <div class="row">
+            <div class="field"><label for="first_name">First Name</label>
+                <input type="text" id="first_name" name="first_name" value="{{ form.first_name or '' }}"></div>
+            <div class="field"><label for="last_name">Last Name</label>
+                <input type="text" id="last_name" name="last_name" value="{{ form.last_name or '' }}"></div>
+        </div>
+        <p class="hint"><span class="req">*</span> Provide an email address <strong>or</strong> a phone number (at least one).</p>
+        <div class="field"><label for="email">Email</label>
+            <input type="email" id="email" name="email" value="{{ form.email or '' }}">
+            {% if errors.email %}<span class="error">{{ errors.email }}</span>{% endif %}</div>
+        <div class="field"><label for="phone">Phone</label>
+            <input type="tel" id="phone" name="phone" value="{{ form.phone or '' }}"></div>
+
+        <label class="check">
+            <input type="checkbox" name="tc_agree" {{ 'checked' if form.tc_agreed else '' }}>
+            <span>I agree to the <a href="#" class="tc-open">terms &amp; conditions</a>.</span>
+        </label>
+        {% if errors.tc %}<span class="error">{{ errors.tc }}</span>{% endif %}
+
+        <button type="submit" class="btn btn--block">Continue</button>
+    </form>
+</div>
+{% include "_tc_modal.html" %}
+{% endblock %}

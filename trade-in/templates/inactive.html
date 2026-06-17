@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Unavailable{% endblock %}
+{% block content %}
+<div class="card card--center">
+    <h1>Currently Unavailable</h1>
+    <p class="subtitle">
+        {% if dealer %}The trade-in tool isn't active for {{ dealer.dealer_name }} right now.{% else %}This trade-in tool isn't available.{% endif %}
+        Please contact the dealership directly for assistance.
+    </p>
+</div>
+{% endblock %}

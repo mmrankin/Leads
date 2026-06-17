@@ -1,0 +1,160 @@
+:root {
+    --bg: #f4f6f8; --card: #fff; --ink: #1f2933; --muted: #6b7280;
+    --line: #e2e8f0; --accent: #2563eb; --accent-ink: #fff;
+    --error: #dc2626; --ok: #047857; --radius: 10px;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+}
+/* Banner spans the content width (same left/right margins as the cards) and
+   sits on the page background, not a white bar. */
+.banner { max-width: 640px; margin: 0 auto; padding: 20px 20px 0; background: transparent; }
+.banner img { width: 100%; max-height: 200px; object-fit: cover; display: block; border-radius: var(--radius); }
+.banner--empty { min-height: 8px; padding: 0; }
+
+/* container — matches the lead form's width + gutters */
+.container { max-width: 640px; margin: 0 auto; padding: 32px 20px 64px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+.card--center { text-align: center; }
+h1 { font-size: 1.35rem; margin: 0 0 6px; }
+h2 { font-size: 1.1rem; margin: 0 0 12px; }
+.subtitle { color: var(--muted); margin: 0 0 16px; }
+.hint { color: var(--muted); font-size: .9rem; margin: 14px 0 8px; }
+.optional { color: var(--muted); font-weight: 400; font-size: .82rem; }
+
+/* progress steps */
+.steps { max-width: 640px; margin: 18px auto 0; padding: 0 20px; display: flex; gap: 6px; }
+.step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted); font-size: .72rem; }
+.step-dot { width: 26px; height: 26px; border-radius: 50%; background: #e5e7eb; color: #6b7280; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; }
+.step.is-active .step-dot { background: var(--accent); color: #fff; }
+.step.is-done .step-dot { background: var(--ok); color: #fff; }
+.step.is-active .step-label, .step.is-done .step-label { color: var(--ink); }
+
+.row { display: flex; gap: 12px; flex-wrap: wrap; }
+.row .field { flex: 1; min-width: 130px; }
+.field, .q { margin-bottom: 16px; display: flex; flex-direction: column; }
+label { font-weight: 600; font-size: .92rem; margin-bottom: 6px; }
+.req { color: var(--accent); }
+input, select { font: inherit; font-size: 16px; padding: 13px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); width: 100%; }
+input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+
+/* segmented choice buttons (big tap targets) */
+.seg { display: flex; gap: 8px; flex-wrap: wrap; }
+.seg-opt { flex: 1; min-width: 72px; margin: 0; }
+.seg-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.seg-opt span { display: block; text-align: center; padding: 13px 10px; border: 1.5px solid var(--line); border-radius: 10px; font-weight: 600; cursor: pointer; background: #fff; transition: all .12s; }
+.seg-opt input:checked + span { border-color: var(--accent); background: var(--accent); color: #fff; }
+.seg-opt input:focus + span { box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+
+.cond { background: #f8fafc; border: 1px dashed var(--line); border-radius: 10px; padding: 14px 14px 2px; }
+
+.check { display: flex; align-items: flex-start; gap: 10px; font-weight: 500; margin: 6px 0 4px; }
+.check input { width: auto; flex: 0 0 auto; margin-top: 3px; transform: scale(1.3); }
+
+.btn { display: inline-block; background: var(--accent); color: var(--accent-ink); border: none; border-radius: 10px; padding: 14px 22px; font: inherit; font-weight: 700; cursor: pointer; text-decoration: none; text-align: center; }
+.btn:hover { filter: brightness(1.05); }
+.btn--block { display: block; width: 100%; margin-top: 8px; }
+.btn--ghost { background: transparent; color: var(--accent); border: 1.5px solid var(--accent); }
+
+.alert { background: #fef2f2; color: var(--error); border: 1px solid #fecaca; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; }
+.error { color: var(--error); font-size: .85rem; margin: 4px 0 8px; }
+
+/* value + share */
+.value-range { font-size: 2rem; font-weight: 800; color: var(--ok); margin: 6px 0 10px; letter-spacing: -.5px; }
+.share { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+
+/* map + qr */
+.map-wrap { border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+.map { width: 100%; height: 220px; border: 0; display: block; }
+.map-actions { margin-top: 12px; }
+.qr { text-align: center; margin-top: 18px; }
+.qr-img { display: inline-block; width: 160px; height: 160px; }
+.qr-img svg { width: 100%; height: 100%; }
+.qr-cap { color: var(--muted); font-size: .85rem; margin-top: 6px; }
+
+.footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 20px; }
+
+/* modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.5); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+.modal-overlay[hidden] { display: none; }
+.modal { background: #fff; border-radius: var(--radius); max-width: 520px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.modal-head h2 { margin: 0; }
+.modal-close { background: none; border: none; font-size: 1.6rem; line-height: 1; cursor: pointer; color: var(--muted); }
+.modal-body { padding: 18px; overflow-y: auto; font-size: .92rem; color: #374151; }
+.modal-foot { padding: 14px 18px; border-top: 1px solid var(--line); text-align: right; }
+
+@media (min-width: 600px) {
+    .share { flex-direction: row; }
+    .share .btn { flex: 1; }
+}
+
+/* ----- credit estimator additions ----- */
+fieldset.vehicle { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px 2px; margin: 6px 0 16px; }
+fieldset.vehicle legend { font-weight: 600; font-size: .92rem; padding: 0 6px; }
+
+/* stack answer buttons full-width (FICO quiz reads better as a vertical list) */
+.seg--stack { flex-direction: column; }
+.seg--stack .seg-opt { flex: none; width: 100%; }
+.seg--stack .seg-opt span { text-align: left; }
+
+.divider { border: none; border-top: 1px solid var(--line); margin: 22px 0 16px; }
+.disclaimer { color: var(--muted); font-size: .76rem; line-height: 1.45; margin-top: 16px; }
+
+.tier-badge { display: inline-block; font-weight: 700; color: var(--accent); background: rgba(37,99,235,.1);
+    border-radius: 999px; padding: 4px 14px; margin: 0 0 10px; }
+.value-range--sm { font-size: 1.5rem; }
+
+.stat-grid { display: flex; flex-direction: column; gap: 14px; }
+.stat { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; background: #f8fafc; }
+.stat-num { font-size: 1.6rem; font-weight: 800; color: var(--ink); letter-spacing: -.5px; }
+.stat-unit { font-size: 1rem; font-weight: 600; color: var(--muted); }
+.stat-cap { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+
+@media (min-width: 600px) {
+    .stat-grid { flex-direction: row; }
+    .stat { flex: 1; }
+}
+
+/* ----- sequential quiz (one question at a time) ----- */
+.q-prompt { font-size: 1.05rem; }
+/* Progress-bar header: shown only when JS drives the one-at-a-time flow. */
+.quiz-bar { display: none; align-items: center; gap: 12px; background: var(--ink);
+    border-radius: var(--radius); padding: 10px 12px; margin: 4px 0 20px; }
+.quiz-back { background: transparent; border: 1px solid rgba(255,255,255,.55); color: #fff;
+    border-radius: 8px; padding: 5px 12px; font: inherit; font-size: .78rem; font-weight: 700;
+    letter-spacing: .03em; cursor: pointer; }
+.quiz-back[hidden] { display: none; }
+.quiz-progress { flex: 1; height: 10px; background: rgba(255,255,255,.25); border-radius: 999px; overflow: hidden; }
+.quiz-fill { height: 100%; width: 25%; background: var(--ok); border-radius: 999px; transition: width .25s ease; }
+.quiz-count { color: #fff; font-weight: 700; font-size: .85rem; min-width: 34px; text-align: right; }
+/* When JS is on, show one slide at a time; without JS, all questions stack. */
+.quiz.js-on .quiz-bar { display: flex; }
+.quiz.js-on .quiz-slide { display: none; }
+.quiz.js-on .quiz-slide.is-active { display: block; }
+
+
+/* Dropdowns: match text-input height (Safari ignores select padding by default).
+   appearance:none lets the shared input/select padding apply, so heights match;
+   a custom chevron keeps the dropdown affordance. */
+select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 13px center;
+    background-size: 16px;
+    padding-right: 38px;
+}
+
+
+/* trade-in value: input + handoff button on one line */
+.trade-row { display: flex; gap: 10px; align-items: stretch; }
+.trade-row input { flex: 1; min-width: 0; }
+.trade-btn { white-space: nowrap; align-self: stretch; display: inline-flex;
+    align-items: center; padding: 0 16px; }

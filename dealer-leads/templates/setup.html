@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dealer Setup</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="setup-body">
+    <main class="container container--wide">
+        <h1>Dealer Setup</h1>
+        <p class="subtitle">Add or edit dealerships. Each dealer's form lives at <code>/d/&lt;DealerID&gt;</code>.</p>
+
+        {% if saved %}
+        <div class="alert alert--ok">Saved dealer <strong>{{ saved }}</strong>. Form URL: <a href="/d/{{ saved }}">/d/{{ saved }}</a></div>
+        {% endif %}
+
+        {% set ed = None %}
+        {% if edit %}
+            {% for d in dealers %}{% if d.dealer_id == edit %}{% set ed = d %}{% endif %}{% endfor %}
+        {% endif %}
+
+        <div class="card">
+            <h2>{{ 'Edit' if ed else 'Add' }} Dealer</h2>
+            <form method="post" action="{{ url_for('setup') }}">
+                <div class="row">
+                    <div class="field">
+                        <label>DealerID <span class="req">*</span></label>
+                        <input name="dealer_id" value="{{ ed.dealer_id if ed else '' }}" {{ 'readonly' if ed else '' }}>
+                        {% if errors.dealer_id %}<span class="error">{{ errors.dealer_id }}</span>{% endif %}
+                    </div>
+                    <div class="field">
+                        <label>Dealer Name <span class="req">*</span></label>
+                        <input name="dealer_name" value="{{ ed.dealer_name if ed else '' }}">
+                        {% if errors.dealer_name %}<span class="error">{{ errors.dealer_name }}</span>{% endif %}
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Address</label>
+                    <input name="address" value="{{ ed.address if ed else '' }}">
+                </div>
+                <div class="row">
+                    <div class="field">
+                        <label>City</label>
+                        <input name="city" value="{{ ed.city if ed else '' }}">
+                    </div>
+                    <div class="field">
+                        <label>State</label>
+                        <select name="state">
+                            <option value=""></option>
+                            {% for s in states %}
+                            <option value="{{ s }}" {{ 'selected' if ed and ed.state == s else '' }}>{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Zip</label>
+                        <input name="zip" value="{{ ed.zip if ed else '' }}">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="field">
+                        <label>Phone</label>
+                        <input name="phone" value="{{ ed.phone if ed else '' }}">
+                    </div>
+                    <div class="field">
+                        <label>Lead Email Address <span class="req">*</span></label>
+                        <input name="lead_email_address" value="{{ ed.lead_email_address if ed else '' }}">
+                        {% if errors.lead_email_address %}<span class="error">{{ errors.lead_email_address }}</span>{% endif %}
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Banner Image URL <span class="optional">(optional — appears at top of the form)</span></label>
+                    <input name="banner_url" value="{{ ed.banner_url if ed else '' }}" placeholder="https://...">
+                </div>
+                <button type="submit" class="btn">{{ 'Update' if ed else 'Add' }} Dealer</button>
+                {% if ed %}<a class="btn btn--ghost" href="{{ url_for('setup') }}">Cancel</a>{% endif %}
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Dealers ({{ dealers|length }})</h2>
+            {% if dealers %}
+            <table class="tbl">
+                <thead><tr><th>DealerID</th><th>Name</th><th>City/State</th><th>Lead Email</th><th>Banner</th><th>Form</th><th></th></tr></thead>
+                <tbody>
+                {% for d in dealers %}
+                <tr>
+                    <td>{{ d.dealer_id }}</td>
+                    <td>{{ d.dealer_name }}</td>
+                    <td>{{ d.city or '' }}{{ ', ' + d.state if d.state else '' }}</td>
+                    <td>{{ d.lead_email_address }}</td>
+                    <td>{{ 'yes' if d.banner_url else '—' }}</td>
+                    <td><a href="/d/{{ d.dealer_id }}">open</a></td>
+                    <td><a href="{{ url_for('setup', edit=d.dealer_id) }}">edit</a></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="subtitle">No dealers yet. Add one above.</p>
+            {% endif %}
+        </div>
+    </main>
+</body>
+</html>

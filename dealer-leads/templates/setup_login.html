@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Setup Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="setup-body">
+    <main class="container">
+        <div class="card card--center">
+            <h1>Dealer Setup</h1>
+            {% if error %}<div class="alert">Incorrect password.</div>{% endif %}
+            <form method="post" action="{{ url_for('setup') }}">
+                <div class="field">
+                    <label>Password</label>
+                    <input type="password" name="password" autofocus>
+                </div>
+                <button type="submit" class="btn">Sign in</button>
+            </form>
+        </div>
+    </main>
+</body>
+</html>

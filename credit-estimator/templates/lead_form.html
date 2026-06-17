@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Free Credit Estimate — {{ dealer.dealer_name }}{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>Estimate your credit — free</h1>
+    <p class="subtitle">
+        Answer a few quick questions and we'll estimate your credit score range
+        and what your financing could look like. No credit check, no impact to
+        your score. First, how can {{ dealer.dealer_name }} reach you?
+    </p>
+
+    {% if errors.contact %}<div class="alert">{{ errors.contact }}</div>{% endif %}
+
+    <form method="post" action="{{ url_for('lead_form', dealer_id=dealer.dealer_id) }}" novalidate>
+        {% if banner_override %}<input type="hidden" name="IMG" value="{{ banner_override }}">{% endif %}
+        <div class="row">
+            <div class="field">
+                <label for="first_name">First Name</label>
+                <input type="text" id="first_name" name="first_name" value="{{ form.first_name or '' }}">
+            </div>
+            <div class="field">
+                <label for="last_name">Last Name</label>
+                <input type="text" id="last_name" name="last_name" value="{{ form.last_name or '' }}">
+            </div>
+        </div>
+
+        <p class="hint"><span class="req">*</span> Provide an email address <strong>or</strong> a phone number (at least one).</p>
+        <div class="row">
+            <div class="field">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" value="{{ form.email or '' }}">
+                {% if errors.email %}<span class="error">{{ errors.email }}</span>{% endif %}
+            </div>
+            <div class="field">
+                <label for="phone">Phone</label>
+                <input type="tel" id="phone" name="phone" value="{{ form.phone or '' }}">
+            </div>
+        </div>
+
+        <label class="check">
+            <input type="checkbox" name="tc_agree" {{ 'checked' if form.tc_agreed else '' }}>
+            <span>I agree to the <a href="#" class="tc-open">terms &amp; conditions</a>.</span>
+        </label>
+        {% if errors.tc %}<span class="error">{{ errors.tc }}</span>{% endif %}
+
+        <button type="submit" class="btn btn--block">Continue to my estimate</button>
+    </form>
+</div>
+{% include "_tc_modal.html" %}
+{% endblock %}

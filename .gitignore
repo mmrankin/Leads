@@ -1,0 +1,19 @@
+# ─── Secrets & local config (NEVER commit) ───
+**/.env
+.env
+# (.env.example files ARE committed as templates)
+
+# ─── Data & runtime artifacts (contain customer PII) ───
+**/*.db
+**/outbox/
+**/*.log
+
+# ─── Python ───
+**/.venv/
+**/__pycache__/
+**/*.pyc
+
+# ─── OS / editor / harness ───
+.DS_Store
+**/.DS_Store
+.claude/

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Estimate your credit{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>Estimate your Credit Score range</h1>
+    <p class="subtitle">Answer these {{ questions|length }} quick questions and we'll estimate your score range.</p>
+
+    <form method="post" action="{{ url_for('estimate', dealer_id=dealer.dealer_id) }}" id="quiz-form" class="quiz">
+        <div class="quiz-bar">
+            <button type="button" class="quiz-back" id="quiz-back" hidden>BACK</button>
+            <div class="quiz-progress"><div class="quiz-fill" id="quiz-fill"></div></div>
+            <span class="quiz-count" id="quiz-count">1/{{ questions|length }}</span>
+        </div>
+
+        {% for key, prompt, options in questions %}
+        <div class="quiz-slide{{ ' is-active' if loop.first else '' }}" data-index="{{ loop.index0 }}">
+            <div class="q">
+                <label class="q-prompt">{{ loop.index }}. {{ prompt }}</label>
+                <div class="seg seg--stack">
+                    {% for value, label in options %}
+                    <label class="seg-opt">
+                        <input type="radio" name="{{ key }}" value="{{ value }}" {{ 'checked' if form[key] == value else '' }}>
+                        <span>{{ label }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% if errors[key] %}<span class="error">{{ errors[key] }}</span>{% endif %}
+            </div>
+        </div>
+        {% endfor %}
+
+        <noscript><button type="submit" class="btn btn--block">Continue</button></noscript>
+        <p class="disclaimer">
+            This is a self-reported estimate for informational purposes only. It is
+            not a credit report or pull, and not a guarantee of financing, terms, or
+            approval. Your actual score and offers depend on a full review of your
+            credit by a lender.
+        </p>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var form = document.getElementById('quiz-form');
+    var slides = [].slice.call(form.querySelectorAll('.quiz-slide'));
+    var fill = document.getElementById('quiz-fill');
+    var count = document.getElementById('quiz-count');
+    var back = document.getElementById('quiz-back');
+    var total = slides.length, cur = 0;
+    if (!total) return;
+    form.classList.add('js-on');  // switch to one-at-a-time mode
+
+    function show(i) {
+        cur = Math.max(0, Math.min(total - 1, i));
+        slides.forEach(function (s, idx) { s.classList.toggle('is-active', idx === cur); });
+        fill.style.width = (((cur + 1) / total) * 100) + '%';
+        count.textContent = (cur + 1) + '/' + total;
+        back.hidden = (cur === 0);
+    }
+    back.addEventListener('click', function () { show(cur - 1); });
+
+    slides.forEach(function (slide, idx) {
+        slide.querySelectorAll('.seg-opt').forEach(function (opt) {
+            opt.addEventListener('click', function () {
+                // Let the radio register as checked, then advance or submit.
+                setTimeout(function () {
+                    if (idx >= total - 1) {
+                        if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
+                    } else {
+                        show(idx + 1);
+                    }
+                }, 220);
+            });
+        });
+    });
+
+    show(0);
+})();
+</script>
+{% endblock %}

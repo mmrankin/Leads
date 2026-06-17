@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Trade-In — Condition{% endblock %}
+{% macro seg(name, options, current) %}
+<div class="seg">
+  {% for value, label in options %}
+  <label class="seg-opt">
+    <input type="radio" name="{{ name }}" value="{{ value }}" {{ 'checked' if current == value else '' }}>
+    <span>{{ label }}</span>
+  </label>
+  {% endfor %}
+</div>
+{% endmacro %}
+{% set YN = [('Y','Yes'),('N','No')] %}
+{% block content %}
+<div class="card">
+    <h1>A few condition questions</h1>
+    <p class="subtitle">This fine-tunes your estimate. Tap your answers.</p>
+
+    <form method="post" action="{{ url_for('step_condition', dealer_id=dealer.dealer_id) }}">
+        <div class="q"><label>Miles on the car</label>
+            <input type="number" inputmode="numeric" name="miles" value="{{ form.miles or '' }}" placeholder="e.g. 45000"></div>
+
+        <div class="q"><label>How many keys?</label>
+            {{ seg('num_keys', [('1','1'),('2','2'),('3+','3+')], form.num_keys) }}</div>
+
+        <div class="q"><label>Any un-repaired damage?</label>{{ seg('unrepaired_damage', YN, form.unrepaired_damage) }}</div>
+        <div class="q"><label>Engine light on?</label>{{ seg('engine_light', YN, form.engine_light) }}</div>
+        <div class="q"><label>Air bag light on?</label>{{ seg('airbag_light', YN, form.airbag_light) }}</div>
+        <div class="q"><label>Brake light on?</label>{{ seg('brake_light', YN, form.brake_light) }}</div>
+        <div class="q"><label>Aftermarket exhaust?</label>{{ seg('aftermarket_exhaust', YN, form.aftermarket_exhaust) }}</div>
+        <div class="q"><label>Aftermarket engine components?</label>{{ seg('aftermarket_engine', YN, form.aftermarket_engine) }}</div>
+        <div class="q"><label>Aftermarket stereo or other electronics?</label>{{ seg('aftermarket_stereo', YN, form.aftermarket_stereo) }}</div>
+
+        <div class="q"><label>Do you own or lease?</label>
+            {{ seg('own_or_lease', [('Own','Own'),('Lease','Lease')], form.own_or_lease) }}</div>
+
+        <div class="q"><label>Do you have a loan, a lease, or title in hand?</label>
+            {{ seg('ownership_status', [('loan','Loan'),('lease','Lease'),('title','Title in hand')], form.ownership_status) }}</div>
+
+        <div class="q cond" id="loan-field" hidden>
+            <label>Outstanding balance on the loan?</label>
+            <input type="number" inputmode="numeric" name="loan_balance" value="{{ form.loan_balance or '' }}" placeholder="$"></div>
+
+        <div class="q cond" id="lease-field" hidden>
+            <label>Months remaining on your lease?</label>
+            <select name="lease_months_remaining">
+                <option value="">Select…</option>
+                {% for mo in lease_months %}
+                <option value="{{ mo }}" {{ 'selected' if form.lease_months_remaining == mo else '' }}>{{ mo }}</option>
+                {% endfor %}
+            </select></div>
+
+        <button type="submit" class="btn btn--block">Get my estimate</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    function sync() {
+        var v = (document.querySelector('input[name="ownership_status"]:checked') || {}).value;
+        document.getElementById('loan-field').hidden = (v !== 'loan');
+        document.getElementById('lease-field').hidden = (v !== 'lease');
+    }
+    document.querySelectorAll('input[name="ownership_status"]').forEach(function (el) {
+        el.addEventListener('change', sync);
+    });
+    sync();
+})();
+</script>
+{% endblock %}

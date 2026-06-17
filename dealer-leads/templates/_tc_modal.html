@@ -1,0 +1,36 @@
+{# Shared Terms & Conditions modal. Trigger with a link/button that has
+   class="tc-open"; identical markup is used in the trade-in app. #}
+<div class="modal-overlay" id="tc-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="tc-title">
+    <div class="modal-head">
+      <h2 id="tc-title">Terms &amp; Conditions</h2>
+      <button type="button" class="modal-close" aria-label="Close" data-tc-close>&times;</button>
+    </div>
+    <div class="modal-body">
+      <p>By submitting your information you agree to be contacted by
+         {{ dealer.dealer_name if dealer else 'the dealership' }} and its
+         representatives by phone, text message, and email regarding your
+         inquiry, including via automated technology, at the contact details you
+         provide. Consent is not a condition of any purchase. Message and data
+         rates may apply.</p>
+      <p>The information you provide will be handled in accordance with the
+         dealership's privacy policy. You may opt out of communications at any
+         time.</p>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" data-tc-close>Close</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var modal = document.getElementById('tc-modal');
+  if (!modal) return;
+  function open(e) { if (e) e.preventDefault(); modal.hidden = false; }
+  function close() { modal.hidden = true; }
+  document.querySelectorAll('.tc-open').forEach(function (el) { el.addEventListener('click', open); });
+  modal.querySelectorAll('[data-tc-close]').forEach(function (el) { el.addEventListener('click', close); });
+  modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+})();
+</script>

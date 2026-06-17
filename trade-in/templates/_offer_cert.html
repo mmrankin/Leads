@@ -1,0 +1,33 @@
+{# Official, serialized trade-in offer certificate. Shared by the thank-you
+   page and the /offer/<serial> recall page. #}
+{% macro offer_cert(serial, vehicle_desc, value_low, value_high, barcode_svg, dealer, issued) %}
+<div class="cert">
+  <div class="cert-frame">
+    <div class="cert-head">
+      <div class="cert-kicker">Official Trade-In Offer</div>
+      <div class="cert-dealer">{{ dealer.dealer_name }}</div>
+    </div>
+
+    {% if vehicle_desc %}<div class="cert-vehicle">{{ vehicle_desc }}</div>{% endif %}
+
+    <div class="cert-value-label">Appraised Trade-In Value</div>
+    {% if value_low is not none and value_high is not none %}
+    <div class="cert-value">${{ "{:,}".format(value_low|int) }} &ndash; ${{ "{:,}".format(value_high|int) }}</div>
+    {% else %}
+    <div class="cert-value cert-value--pending">Pending appraisal</div>
+    {% endif %}
+
+    <div class="cert-barcode">
+      {% if barcode_svg %}{{ barcode_svg|safe }}{% else %}<div class="cert-serial-fallback">{{ serial }}</div>{% endif %}
+    </div>
+    <div class="cert-serial">Offer No. <strong>{{ serial }}</strong></div>
+
+    <div class="cert-foot">
+      {% if issued %}<span>Issued {{ issued }}</span>{% endif %}
+      <span>Present this offer number at {{ dealer.dealer_name }}. Estimate based on
+      current market data; final offer subject to in-person vehicle inspection
+      and title verification.</span>
+    </div>
+  </div>
+</div>
+{% endmacro %}

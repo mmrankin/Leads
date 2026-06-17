@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_offer_cert.html" import offer_cert %}
+{% block title %}Trade-In Offer {{ serial }}{% endblock %}
+{% block content %}
+
+{{ offer_cert(serial, vehicle_desc, lead.value_low, lead.value_high,
+              barcode_svg, dealer, (lead.created_at[:10] if lead.created_at else none)) }}
+
+<div class="card card--center">
+    {% if emailed == '1' %}<div class="alert alert--ok">Your offer was emailed to you.</div>
+    {% elif emailed in ['fail','no'] %}<div class="alert">Sorry, we couldn't email your offer just now.</div>{% endif %}
+    <div class="share">
+        {% if has_email and email_post %}
+        <form method="post" action="{{ email_post }}" style="flex:1;margin:0;">
+            <button type="submit" class="btn btn--block">Email me my offer</button>
+        </form>
+        {% endif %}
+        <a class="btn btn--ghost" href="{{ sms }}">Text me my offer</a>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Visit {{ dealer.dealer_name }}</h2>
+    {% set addr = [dealer.address, dealer.city, dealer.state, dealer.zip]|select|join(', ') %}
+    {% if addr %}<p class="subtitle">{{ addr }}</p>{% endif %}
+    {% if dealer.phone %}<p class="subtitle">{{ dealer.phone }}</p>{% endif %}
+    <div class="map-wrap">
+        <iframe class="map" src="{{ maps_embed }}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+                title="Map to {{ dealer.dealer_name }}"></iframe>
+    </div>
+    <div class="map-actions">
+        <a class="btn btn--ghost btn--block" href="{{ maps_link }}" target="_blank" rel="noopener">Open in Google Maps</a>
+    </div>
+</div>
+{% endblock %}
