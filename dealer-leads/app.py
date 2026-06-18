@@ -32,6 +32,7 @@ from flask import (
 )
 
 import platform_db as pdb
+import contact_cookie
 import db
 import vin_db
 from adf import build_adf
@@ -47,6 +48,12 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-change-me")
 # headers so url_for(_external=True) yields https://<public-host>.
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+
+
+@app.after_request
+def _share_pii(response):
+    # Persist any submitted name/email/phone to the shared .dlrpro.com cookie.
+    return contact_cookie.persist(request, response)
 
 
 @app.before_request
@@ -90,9 +97,10 @@ def lead_form(dealer_id):
     dealer = _require_active_dealer(dealer_id)
 
     if request.method == "GET":
-        # Allow ?year=&make=&model= (or vehicle_*-prefixed) to pre-populate the
+        # Pre-fill name/email/phone from the shared cross-product cookie, then
+        # allow ?year=&make=&model= (or vehicle_*-prefixed) to pre-populate the
         # vehicle dropdowns/inputs — handy for links from inventory listings.
-        prefill = {}
+        prefill = dict(contact_cookie.read(request))
         for short, full in (
             ("year", "vehicle_year"),
             ("make", "vehicle_make"),

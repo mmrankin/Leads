@@ -39,6 +39,7 @@ from flask import (
 )
 
 import platform_db as pdb
+import contact_cookie
 import db
 import credit
 from adf import build_adf
@@ -54,6 +55,11 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-change-me")
 # headers so url_for(_external=True) yields https://<public-host>.
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+
+
+@app.after_request
+def _share_pii(response):
+    return contact_cookie.persist(request, response)
 
 
 @app.before_request
@@ -100,8 +106,10 @@ def lead_form(dealer_id):
     dealer = _require_active_dealer(dealer_id)
 
     if request.method == "GET":
+        # Pre-fill name/email/phone from the shared cross-product cookie.
         return render_template(
-            "lead_form.html", dealer=dealer, errors={}, form={},
+            "lead_form.html", dealer=dealer, errors={},
+            form=contact_cookie.read(request),
             banner_override=_banner_override(), step=1,
         )
 

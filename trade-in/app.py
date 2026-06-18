@@ -35,6 +35,7 @@ from flask import (
 )
 
 import platform_db as pdb
+import contact_cookie
 import db
 import vin_db
 import valuation as valuation_mod
@@ -68,6 +69,11 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-change-me")
 # headers so url_for(_external=True) yields https://<public-host>.
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+
+
+@app.after_request
+def _share_pii(response):
+    return contact_cookie.persist(request, response)
 
 
 @app.before_request
@@ -194,7 +200,9 @@ def step_contact(dealer_id):
         return redirect(url_for("step_vehicle", dealer_id=dealer_id))
 
     if request.method == "GET":
-        return render_template("step_contact.html", dealer=dealer, form=data,
+        # Pre-fill from the shared cross-product cookie; session data wins.
+        form = {**contact_cookie.read(request), **data}
+        return render_template("step_contact.html", dealer=dealer, form=form,
                                errors={}, step=2)
 
     form = {k: (request.form.get(k) or "").strip() for k in
