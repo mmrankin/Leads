@@ -1,37 +1,20 @@
-"""Read-only access to the two product lead databases for the admin.
+"""Read-only access to the lead tables (in SQL Server `dlrPro`) for the admin.
 
-Leads live in each app's own SQLite file; this opens them read-only and
-normalizes rows into a common shape so the admin can browse them in one place.
-
-Config (env, with sensible defaults relative to this package):
-    LEADS_DB_PATH      dealer-leads leads.db
-    TRADEIN_DB_PATH    trade-in trade_in.db
-    CREDIT_DB_PATH     credit-estimator credit.db
+All three lead types now live in dlrPro; this reads them and normalizes rows
+into a common shape so the admin can browse them in one place.
 """
 
-import os
-import sqlite3
-
-_HERE = os.path.dirname(os.path.abspath(__file__))
-LEADS_DB_PATH = os.environ.get(
-    "LEADS_DB_PATH", os.path.join(_HERE, "..", "dealer-leads", "leads.db"))
-TRADEIN_DB_PATH = os.environ.get(
-    "TRADEIN_DB_PATH", os.path.join(_HERE, "..", "trade-in", "trade_in.db"))
-CREDIT_DB_PATH = os.environ.get(
-    "CREDIT_DB_PATH", os.path.join(_HERE, "..", "credit-estimator", "credit.db"))
+import dlrpro_db as dlr
 
 
-def _query(path, sql, params=()):
-    if not os.path.exists(path):
-        return []
+def _fetch(table, dealer_id, limit):
+    top = "TOP %d " % int(limit)
     try:
-        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-        conn.row_factory = sqlite3.Row
-        try:
-            return [dict(r) for r in conn.execute(sql, params).fetchall()]
-        finally:
-            conn.close()
-    except sqlite3.Error:
+        if dealer_id:
+            return dlr.query(f"SELECT {top}* FROM {table} WHERE dealer_id=%(d)s "
+                             "ORDER BY created_at DESC", {"d": dealer_id})
+        return dlr.query(f"SELECT {top}* FROM {table} ORDER BY created_at DESC")
+    except Exception:
         return []
 
 
@@ -47,13 +30,7 @@ def _name(r):
 
 
 def lead_form_leads(dealer_id=None, limit=300):
-    where = "WHERE dealer_id = ?" if dealer_id else ""
-    args = (dealer_id,) if dealer_id else ()
-    rows = _query(
-        LEADS_DB_PATH,
-        f"SELECT * FROM leads {where} ORDER BY created_at DESC LIMIT {int(limit)}",
-        args,
-    )
+    rows = _fetch("leads", dealer_id, limit)
     out = []
     for r in rows:
         out.append({
@@ -67,13 +44,7 @@ def lead_form_leads(dealer_id=None, limit=300):
 
 
 def trade_leads(dealer_id=None, limit=300):
-    where = "WHERE dealer_id = ?" if dealer_id else ""
-    args = (dealer_id,) if dealer_id else ()
-    rows = _query(
-        TRADEIN_DB_PATH,
-        f"SELECT * FROM trade_leads {where} ORDER BY created_at DESC LIMIT {int(limit)}",
-        args,
-    )
+    rows = _fetch("trade_leads", dealer_id, limit)
     out = []
     for r in rows:
         value = None
@@ -91,13 +62,7 @@ def trade_leads(dealer_id=None, limit=300):
 
 
 def credit_leads(dealer_id=None, limit=300):
-    where = "WHERE dealer_id = ?" if dealer_id else ""
-    args = (dealer_id,) if dealer_id else ()
-    rows = _query(
-        CREDIT_DB_PATH,
-        f"SELECT * FROM credit_leads {where} ORDER BY created_at DESC LIMIT {int(limit)}",
-        args,
-    )
+    rows = _fetch("credit_leads", dealer_id, limit)
     out = []
     for r in rows:
         value = None
@@ -201,13 +166,15 @@ FIELD_LABELS = {
 def get_lead_detail(product, lead_id):
     """Return (row_dict, groups, adf_xml) for a single lead, or (None, [], None)."""
     if product == "TRADE_IN":
-        path, table, groups = TRADEIN_DB_PATH, "trade_leads", TRADE_IN_GROUPS
+        table, groups = "trade_leads", TRADE_IN_GROUPS
     elif product == "CREDIT_EST":
-        path, table, groups = CREDIT_DB_PATH, "credit_leads", CREDIT_GROUPS
+        table, groups = "credit_leads", CREDIT_GROUPS
     else:
-        path, table, groups = LEADS_DB_PATH, "leads", LEAD_FORM_GROUPS
-    rows = _query(path, f"SELECT * FROM {table} WHERE id = ?", (lead_id,))
-    if not rows:
+        table, groups = "leads", LEAD_FORM_GROUPS
+    try:
+        row = dlr.one(f"SELECT * FROM {table} WHERE id=%(id)s", {"id": lead_id})
+    except Exception:
+        row = None
+    if not row:
         return None, [], None
-    row = rows[0]
     return row, groups, row.get("adf_xml")

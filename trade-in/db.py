@@ -1,42 +1,51 @@
-"""SQLite access helpers for the trade-in widget."""
+"""Trade-in data access.
+
+HYBRID: trade leads live in SQL Server `dlrPro` (via the shared dlrpro_db
+helper), while the valuation performance caches (squish_map / vin8_map /
+inv_prefix_count) stay in a small LOCAL SQLite file for instant lookups.
+Public function names/signatures are unchanged.
+"""
 
 import os
 import sqlite3
 
+import dlrpro_db as dlr
+from dlrpro_db import NOW
+
+# Local SQLite — caches only.
 DB_PATH = os.environ.get(
     "TRADEIN_DB_PATH",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "trade_in.db"),
 )
-SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schema.sql")
 
 
 def get_conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
 def init_db():
-    with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
-        schema = f.read()
+    """Ensure the local cache tables exist. (trade_leads lives in dlrPro.)"""
     conn = get_conn()
     try:
-        conn.executescript(schema)
-        # Migrations for DBs created before the valuation columns existed.
-        for col, decl in (("value_estimate", "REAL"), ("value_low", "REAL"),
-                          ("value_high", "REAL"), ("value_source", "TEXT"),
-                          ("serial", "TEXT")):
-            try:
-                conn.execute(f"ALTER TABLE trade_leads ADD COLUMN {col} {decl}")
-            except sqlite3.OperationalError:
-                pass  # already exists
+        conn.executescript("""
+        CREATE TABLE IF NOT EXISTS squish_map (
+            year INTEGER NOT NULL, make TEXT NOT NULL, model TEXT NOT NULL,
+            s8 TEXT NOT NULL, s2 TEXT NOT NULL, PRIMARY KEY (year, make, model));
+        CREATE TABLE IF NOT EXISTS vin8_map (
+            make TEXT NOT NULL, model TEXT NOT NULL, s8 TEXT NOT NULL,
+            PRIMARY KEY (make, model, s8));
+        CREATE INDEX IF NOT EXISTS idx_vin8_make_model ON vin8_map(make, model);
+        CREATE TABLE IF NOT EXISTS inv_prefix_count (
+            s8 TEXT PRIMARY KEY, cnt INTEGER NOT NULL);
+        """)
         conn.commit()
     finally:
         conn.close()
 
 
-# ----- trade leads -----
+# ----- trade leads (SQL Server / dlrPro) -----
 
 CONTACT_FIELDS = (
     "dealer_id", "serial", "vehicle_year", "vehicle_make", "vehicle_model",
@@ -55,62 +64,40 @@ CONDITION_FIELDS = (
 
 def insert_trade_lead(data):
     """Create the lead after step 2 (contact). Returns the new id."""
-    values = {k: data.get(k) for k in CONTACT_FIELDS}
+    v = {k: data.get(k) for k in CONTACT_FIELDS}
     cols = ", ".join(CONTACT_FIELDS)
-    params = ", ".join(f":{k}" for k in CONTACT_FIELDS)
-    conn = get_conn()
-    try:
-        cur = conn.execute(
-            f"INSERT INTO trade_leads ({cols}) VALUES ({params})", values
-        )
-        conn.commit()
-        return cur.lastrowid
-    finally:
-        conn.close()
+    ph = ", ".join(f"%({k})s" for k in CONTACT_FIELDS)
+    return dlr.insert(f"INSERT INTO trade_leads ({cols}) VALUES ({ph})", v)
 
 
 def get_trade_lead(lead_id):
-    conn = get_conn()
-    try:
-        row = conn.execute(
-            "SELECT * FROM trade_leads WHERE id = ?", (lead_id,)
-        ).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
+    return dlr.one("SELECT * FROM trade_leads WHERE id=%(id)s", {"id": lead_id})
 
 
 def get_trade_lead_by_serial(serial):
-    conn = get_conn()
-    try:
-        row = conn.execute(
-            "SELECT * FROM trade_leads WHERE serial = ?", (serial,)
-        ).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
+    return dlr.one("SELECT * FROM trade_leads WHERE serial=%(s)s", {"s": serial})
 
 
 def update_trade_condition(lead_id, data):
     """Apply step-3 condition answers + the refreshed ADF payload + valuation."""
     fields = CONDITION_FIELDS + ("adf_xml", "value_estimate", "value_low",
                                  "value_high", "value_source")
-    values = {k: data.get(k) for k in fields}
-    values["id"] = lead_id
-    sets = ", ".join(f"{k} = :{k}" for k in fields)
-    conn = get_conn()
-    try:
-        conn.execute(
-            f"UPDATE trade_leads SET {sets}, stage='complete', "
-            f"updated_at=datetime('now') WHERE id = :id",
-            values,
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    v = {k: data.get(k) for k in fields}
+    v["id"] = lead_id
+    sets = ", ".join(f"{k}=%({k})s" for k in fields)
+    dlr.execute(f"UPDATE trade_leads SET {sets}, stage='complete', "
+                f"updated_at={NOW} WHERE id=%(id)s", v)
 
 
-# ----- squish VIN cache (year/make/model -> representative squish) -----
+def set_email_status(lead_id, which, status, detail=None):
+    """which = 1 (after step 2) or 2 (after step 3)."""
+    col = "email1_status" if which == 1 else "email2_status"
+    dcol = "email1_detail" if which == 1 else "email2_detail"
+    dlr.execute(f"UPDATE trade_leads SET {col}=%(s)s, {dcol}=%(d)s WHERE id=%(id)s",
+                {"s": status, "d": detail, "id": lead_id})
+
+
+# ----- squish VIN cache (LOCAL SQLite: year/make/model -> representative squish) -----
 
 def get_cached_squish(year, make, model):
     conn = get_conn()
@@ -155,7 +142,7 @@ def squish_count():
         conn.close()
 
 
-# ----- vin8 prefix cache (make/model -> set of distinct first-8 VIN prefixes) -----
+# ----- vin8 prefix cache (LOCAL SQLite: make/model -> first-8 VIN prefixes) -----
 
 def get_vin8_set(make, model):
     conn = get_conn()
@@ -187,7 +174,7 @@ def vin8_count():
         conn.close()
 
 
-# ----- inventory prefix counts (first-8 VIN -> # for sale) -----
+# ----- inventory prefix counts (LOCAL SQLite: first-8 VIN -> # for sale) -----
 
 def get_inv_count(prefixes):
     """Sum of tbl_inventory counts across the given first-8 prefixes (local)."""
@@ -221,20 +208,5 @@ def inv_count_rows():
     conn = get_conn()
     try:
         return conn.execute("SELECT COUNT(*) FROM inv_prefix_count").fetchone()[0]
-    finally:
-        conn.close()
-
-
-def set_email_status(lead_id, which, status, detail=None):
-    """which = 1 (after step 2) or 2 (after step 3)."""
-    col = "email1_status" if which == 1 else "email2_status"
-    dcol = "email1_detail" if which == 1 else "email2_detail"
-    conn = get_conn()
-    try:
-        conn.execute(
-            f"UPDATE trade_leads SET {col} = ?, {dcol} = ? WHERE id = ?",
-            (status, detail, lead_id),
-        )
-        conn.commit()
     finally:
         conn.close()

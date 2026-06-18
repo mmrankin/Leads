@@ -17,3 +17,8 @@
 .DS_Store
 **/.DS_Store
 .claude/
+
+# SQLite backups (contain PII)
+**/*.bak
+**/*.db-journal
+**/*.db-wal

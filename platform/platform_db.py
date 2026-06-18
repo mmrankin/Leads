@@ -1,205 +1,119 @@
-"""Shared platform data access: dealers + product access grants.
+"""Shared platform data access: dealers + product access grants + settings.
 
-Imported by both the dealer-leads app and the trade-in app (each adds this
-directory to sys.path). The database file is shared so a dealer is configured
-once and granted whichever products apply.
-
-Configuration:
-    PLATFORM_DB_PATH   Path to the shared SQLite file. Defaults to platform.db
-                       next to this module.
+Backed by the SQL Server `dlrPro` database (see dlrpro_db.py). Imported by both
+the dealer-leads and trade-in/credit apps (each adds this directory to sys.path).
+Public function names/signatures are unchanged from the old SQLite version.
 """
 
-import os
-import sqlite3
 from datetime import date
 
-DB_PATH = os.environ.get(
-    "PLATFORM_DB_PATH",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "platform.db"),
-)
-SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schema.sql")
+import dlrpro_db as dlr
+from dlrpro_db import NOW
 
 # Canonical product codes.
 PRODUCT_LEAD_FORM = "LEAD_FORM"
 PRODUCT_TRADE_IN = "TRADE_IN"
 PRODUCT_CREDIT_EST = "CREDIT_EST"
+# CDP (cdp.dlrpro.com) modules — granted per dealer here, enforced by the CDP app.
+PRODUCT_CDP_VMS = "CDP_VMS"
+PRODUCT_CDP_CRM = "CDP_CRM"
+PRODUCT_CDP_PROSPECTING = "CDP_PROSPECTING"
 DEFAULT_PRODUCTS = [
     (PRODUCT_LEAD_FORM, "Dealer Lead Form", "Customer lead-capture form with ADF/XML delivery."),
     (PRODUCT_TRADE_IN, "Trade-In Widget", "Multi-step trade-in appraisal capture with ADF/XML delivery."),
     (PRODUCT_CREDIT_EST, "Credit Estimator", "Lead form + FICO-range estimate, APR/payment, and affordability."),
+    (PRODUCT_CDP_VMS, "CDP · Vehicle Management", "Appraisal, VIN normalization, valuation, photos & inventory."),
+    (PRODUCT_CDP_CRM, "CDP · CRM", "Customer relationship management (coming soon)."),
+    (PRODUCT_CDP_PROSPECTING, "CDP · Prospecting", "Data mining & opportunity lists (coming soon)."),
 ]
 
 
-def get_conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
-
-
 def init_db():
-    with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
-        schema = f.read()
-    conn = get_conn()
-    try:
-        conn.executescript(schema)
-        for code, name, desc in DEFAULT_PRODUCTS:
-            conn.execute(
-                "INSERT INTO products (product_code, product_name, description) "
-                "VALUES (?, ?, ?) ON CONFLICT(product_code) DO UPDATE SET "
-                "product_name = excluded.product_name, description = excluded.description",
-                (code, name, desc),
-            )
-        conn.commit()
-    finally:
-        conn.close()
+    """Ensure the default products exist (tables themselves are created by the
+    one-time migrate_to_dlrpro.py). Idempotent."""
+    for code, name, desc in DEFAULT_PRODUCTS:
+        p = {"c": code, "n": name, "d": desc}
+        if dlr.one("SELECT 1 AS x FROM products WHERE product_code=%(c)s", p):
+            dlr.execute("UPDATE products SET product_name=%(n)s, description=%(d)s "
+                        "WHERE product_code=%(c)s", p)
+        else:
+            dlr.execute("INSERT INTO products (product_code, product_name, description) "
+                        "VALUES (%(c)s, %(n)s, %(d)s)", p)
 
 
 # ----- dealers -----
 
 def get_dealer(dealer_id):
-    conn = get_conn()
-    try:
-        row = conn.execute(
-            "SELECT * FROM dealers WHERE dealer_id = ?", (dealer_id,)
-        ).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
+    return dlr.one("SELECT * FROM dealers WHERE dealer_id=%(d)s", {"d": dealer_id})
 
 
 def list_dealers():
-    conn = get_conn()
-    try:
-        rows = conn.execute("SELECT * FROM dealers ORDER BY dealer_name").fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
+    return dlr.query("SELECT * FROM dealers ORDER BY dealer_name")
 
 
 def upsert_dealer(data):
-    fields = (
-        "dealer_id", "dealer_name", "address", "city", "state",
-        "zip", "phone", "lead_email_address", "banner_url",
-    )
-    values = {k: (data.get(k) or None) for k in fields}
-    conn = get_conn()
-    try:
-        conn.execute(
-            """
-            INSERT INTO dealers
-                (dealer_id, dealer_name, address, city, state, zip,
-                 phone, lead_email_address, banner_url)
-            VALUES
-                (:dealer_id, :dealer_name, :address, :city, :state, :zip,
-                 :phone, :lead_email_address, :banner_url)
-            ON CONFLICT(dealer_id) DO UPDATE SET
-                dealer_name        = excluded.dealer_name,
-                address            = excluded.address,
-                city               = excluded.city,
-                state              = excluded.state,
-                zip                = excluded.zip,
-                phone              = excluded.phone,
-                lead_email_address = excluded.lead_email_address,
-                banner_url         = excluded.banner_url,
-                updated_at         = datetime('now')
-            """,
-            values,
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    fields = ("dealer_id", "dealer_name", "address", "city", "state",
+              "zip", "phone", "lead_email_address", "banner_url")
+    v = {k: (data.get(k) or None) for k in fields}
+    if dlr.one("SELECT 1 AS x FROM dealers WHERE dealer_id=%(dealer_id)s", v):
+        dlr.execute(
+            "UPDATE dealers SET dealer_name=%(dealer_name)s, address=%(address)s, "
+            "city=%(city)s, state=%(state)s, zip=%(zip)s, phone=%(phone)s, "
+            "lead_email_address=%(lead_email_address)s, banner_url=%(banner_url)s, "
+            f"updated_at={NOW} WHERE dealer_id=%(dealer_id)s", v)
+    else:
+        dlr.execute(
+            "INSERT INTO dealers (dealer_id, dealer_name, address, city, state, zip, "
+            "phone, lead_email_address, banner_url) VALUES (%(dealer_id)s, "
+            "%(dealer_name)s, %(address)s, %(city)s, %(state)s, %(zip)s, %(phone)s, "
+            "%(lead_email_address)s, %(banner_url)s)", v)
 
 
 # ----- products -----
 
 def list_products():
-    conn = get_conn()
-    try:
-        rows = conn.execute("SELECT * FROM products ORDER BY product_name").fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
+    return dlr.query("SELECT * FROM products ORDER BY product_name")
 
 
 # ----- grants -----
 
 def list_grants(dealer_id=None):
-    conn = get_conn()
-    try:
-        if dealer_id:
-            rows = conn.execute(
-                "SELECT * FROM dealer_products WHERE dealer_id = ? ORDER BY product_code",
-                (dealer_id,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM dealer_products ORDER BY dealer_id, product_code"
-            ).fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
+    if dealer_id:
+        return dlr.query("SELECT * FROM dealer_products WHERE dealer_id=%(d)s "
+                         "ORDER BY product_code", {"d": dealer_id})
+    return dlr.query("SELECT * FROM dealer_products ORDER BY dealer_id, product_code")
 
 
 def upsert_grant(data):
-    fields = (
-        "dealer_id", "product_code", "valid_from", "valid_to",
-        "monthly_price", "per_lead_price",
-    )
-    values = {k: (data.get(k) if data.get(k) not in ("",) else None) for k in fields}
-    conn = get_conn()
-    try:
-        conn.execute(
-            """
-            INSERT INTO dealer_products
-                (dealer_id, product_code, valid_from, valid_to,
-                 monthly_price, per_lead_price)
-            VALUES
-                (:dealer_id, :product_code, :valid_from, :valid_to,
-                 :monthly_price, :per_lead_price)
-            ON CONFLICT(dealer_id, product_code) DO UPDATE SET
-                valid_from     = excluded.valid_from,
-                valid_to       = excluded.valid_to,
-                monthly_price  = excluded.monthly_price,
-                per_lead_price = excluded.per_lead_price,
-                updated_at     = datetime('now')
-            """,
-            values,
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    fields = ("dealer_id", "product_code", "valid_from", "valid_to",
+              "monthly_price", "per_lead_price")
+    v = {k: (data.get(k) if data.get(k) not in ("",) else None) for k in fields}
+    if dlr.one("SELECT 1 AS x FROM dealer_products WHERE dealer_id=%(dealer_id)s "
+               "AND product_code=%(product_code)s", v):
+        dlr.execute(
+            "UPDATE dealer_products SET valid_from=%(valid_from)s, valid_to=%(valid_to)s, "
+            "monthly_price=%(monthly_price)s, per_lead_price=%(per_lead_price)s, "
+            f"updated_at={NOW} WHERE dealer_id=%(dealer_id)s AND product_code=%(product_code)s", v)
+    else:
+        dlr.execute(
+            "INSERT INTO dealer_products (dealer_id, product_code, valid_from, valid_to, "
+            "monthly_price, per_lead_price) VALUES (%(dealer_id)s, %(product_code)s, "
+            "%(valid_from)s, %(valid_to)s, %(monthly_price)s, %(per_lead_price)s)", v)
 
 
 def delete_grant(grant_id):
-    conn = get_conn()
-    try:
-        conn.execute("DELETE FROM dealer_products WHERE id = ?", (grant_id,))
-        conn.commit()
-    finally:
-        conn.close()
+    dlr.execute("DELETE FROM dealer_products WHERE id=%(id)s", {"id": grant_id})
 
 
 def get_active_grant(dealer_id, product_code, on_date=None):
-    """Return the grant row if the dealer's product is active on the given date
-    (default: today), else None. NULL bounds are treated as unbounded.
-    ISO 'YYYY-MM-DD' strings compare correctly lexicographically.
-    """
+    """Grant row if active on the date (default today), else None. NULL bounds =
+    unbounded; ISO 'YYYY-MM-DD' strings compare correctly."""
     today = on_date or date.today().isoformat()
-    conn = get_conn()
-    try:
-        row = conn.execute(
-            """
-            SELECT * FROM dealer_products
-            WHERE dealer_id = ? AND product_code = ?
-              AND (valid_from IS NULL OR valid_from <= ?)
-              AND (valid_to   IS NULL OR valid_to   >= ?)
-            """,
-            (dealer_id, product_code, today, today),
-        ).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
+    return dlr.one(
+        "SELECT * FROM dealer_products WHERE dealer_id=%(d)s AND product_code=%(p)s "
+        "AND (valid_from IS NULL OR valid_from<=%(t)s) "
+        "AND (valid_to IS NULL OR valid_to>=%(t)s)",
+        {"d": dealer_id, "p": product_code, "t": today})
 
 
 def dealer_has_product(dealer_id, product_code, on_date=None):
@@ -208,14 +122,12 @@ def dealer_has_product(dealer_id, product_code, on_date=None):
 
 # ----- valuation settings -----
 
-# The per-condition adjustment fields, in column order.
 CONDITION_ADJ_FIELDS = (
     "adj_keys_1", "adj_keys_3plus", "adj_unrepaired_damage", "adj_engine_light",
     "adj_airbag_light", "adj_brake_light", "adj_aftermarket_exhaust",
     "adj_aftermarket_engine", "adj_aftermarket_stereo",
 )
 
-# Recommended adjustments (our assessment of value impact), per unit.
 RECOMMENDED = {
     "dollar": {
         "range_spread": 500, "mileage_rate": 0.12,
@@ -238,72 +150,46 @@ ALL_SETTING_FIELDS = ("base_source", "adjustment_unit", "range_spread",
 
 
 def recommended_settings(unit):
-    """Recommended values for the given unit (dollar|percent)."""
     return dict(RECOMMENDED.get(unit, RECOMMENDED["dollar"]))
 
 
 def get_valuation_settings(dealer_id):
-    """Return the dealer's valuation settings, or sensible defaults if unset."""
-    conn = get_conn()
-    try:
-        row = conn.execute(
-            "SELECT * FROM dealer_valuation_settings WHERE dealer_id = ?",
-            (dealer_id,),
-        ).fetchone()
-    finally:
-        conn.close()
+    row = dlr.one("SELECT * FROM dealer_valuation_settings WHERE dealer_id=%(d)s",
+                  {"d": dealer_id})
     if row:
-        return dict(row)
+        return row
     defaults = {"dealer_id": dealer_id, "base_source": "retail",
                 "adjustment_unit": "dollar"}
     defaults.update(RECOMMENDED["dollar"])
     return defaults
 
 
+def _upsert_settings(table, fields, data):
+    v = {"dealer_id": data["dealer_id"]}
+    for f in fields:
+        v[f] = data.get(f)
+    if dlr.one(f"SELECT 1 AS x FROM {table} WHERE dealer_id=%(dealer_id)s", v):
+        sets = ", ".join(f"{f}=%({f})s" for f in fields)
+        dlr.execute(f"UPDATE {table} SET {sets}, updated_at={NOW} "
+                    "WHERE dealer_id=%(dealer_id)s", v)
+    else:
+        cols = ", ".join(("dealer_id",) + tuple(fields))
+        ph = ", ".join(f"%({c})s" for c in ("dealer_id",) + tuple(fields))
+        dlr.execute(f"INSERT INTO {table} ({cols}) VALUES ({ph})", v)
+
+
 def upsert_valuation_settings(data):
-    values = {"dealer_id": data["dealer_id"]}
-    for f in ALL_SETTING_FIELDS:
-        values[f] = data.get(f)
-    cols = ", ".join(("dealer_id",) + ALL_SETTING_FIELDS)
-    params = ", ".join(f":{c}" for c in ("dealer_id",) + ALL_SETTING_FIELDS)
-    updates = ", ".join(f"{f} = excluded.{f}" for f in ALL_SETTING_FIELDS)
-    conn = get_conn()
-    try:
-        conn.execute(
-            f"INSERT INTO dealer_valuation_settings ({cols}) VALUES ({params}) "
-            f"ON CONFLICT(dealer_id) DO UPDATE SET {updates}, updated_at=datetime('now')",
-            values,
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    _upsert_settings("dealer_valuation_settings", ALL_SETTING_FIELDS, data)
 
 
 # ----- credit estimator settings -----
-#
-# The financial knobs the Credit Estimator uses to turn an estimated FICO range
-# into an APR, a monthly payment, and a max-affordable figure. The FICO-range
-# scoring model itself lives in the credit-estimator app (credit.py) and is not
-# dealer-configurable; only these lender-facing rates/limits are. Pattern mirrors
-# dealer_valuation_settings: edit per dealer in admin, reset to RECOMMENDED.
 
-# APR by estimated FICO tier (used-vehicle base rate, annual percent).
 CREDIT_APR_FIELDS = (
-    "apr_exceptional",  # 800-850
-    "apr_very_good",    # 740-799
-    "apr_good",         # 670-739
-    "apr_fair",         # 580-669
-    "apr_poor",         # 300-579
+    "apr_exceptional", "apr_very_good", "apr_good", "apr_fair", "apr_poor",
 )
-
 CREDIT_SETTING_FIELDS = CREDIT_APR_FIELDS + (
-    "new_apr_delta",     # added to the tier APR when the vehicle is new (usually negative)
-    "apr_spread",        # +/- percentage points shown around the estimated APR
-    "max_term_months",   # longest term offered, used for the affordability calc
-    "max_payment_pct",   # share of gross monthly income allotted to the car payment
+    "new_apr_delta", "apr_spread", "max_term_months", "max_payment_pct",
 )
-
-# Our recommended starting points (a dealer can override any of them).
 RECOMMENDED_CREDIT = {
     "apr_exceptional": 6.49, "apr_very_good": 7.49, "apr_good": 9.99,
     "apr_fair": 14.49, "apr_poor": 19.99,
@@ -317,36 +203,14 @@ def recommended_credit_settings():
 
 
 def get_credit_settings(dealer_id):
-    """Return the dealer's credit settings, or RECOMMENDED defaults if unset."""
-    conn = get_conn()
-    try:
-        row = conn.execute(
-            "SELECT * FROM dealer_credit_settings WHERE dealer_id = ?",
-            (dealer_id,),
-        ).fetchone()
-    finally:
-        conn.close()
+    row = dlr.one("SELECT * FROM dealer_credit_settings WHERE dealer_id=%(d)s",
+                  {"d": dealer_id})
     if row:
-        return dict(row)
+        return row
     defaults = {"dealer_id": dealer_id}
     defaults.update(RECOMMENDED_CREDIT)
     return defaults
 
 
 def upsert_credit_settings(data):
-    values = {"dealer_id": data["dealer_id"]}
-    for f in CREDIT_SETTING_FIELDS:
-        values[f] = data.get(f)
-    cols = ", ".join(("dealer_id",) + CREDIT_SETTING_FIELDS)
-    params = ", ".join(f":{c}" for c in ("dealer_id",) + CREDIT_SETTING_FIELDS)
-    updates = ", ".join(f"{f} = excluded.{f}" for f in CREDIT_SETTING_FIELDS)
-    conn = get_conn()
-    try:
-        conn.execute(
-            f"INSERT INTO dealer_credit_settings ({cols}) VALUES ({params}) "
-            f"ON CONFLICT(dealer_id) DO UPDATE SET {updates}, updated_at=datetime('now')",
-            values,
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    _upsert_settings("dealer_credit_settings", CREDIT_SETTING_FIELDS, data)
