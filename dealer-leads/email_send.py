@@ -15,6 +15,22 @@ import requests
 SENDGRID_URL = "https://api.sendgrid.com/v3/mail/send"
 OUTBOX_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outbox")
 
+# Addresses BCC'd on every outbound ADF/XML lead email (env override: ADF_BCC, comma-separated).
+ADF_BCC = [e.strip() for e in os.environ.get(
+    "ADF_BCC",
+    "justinstull@rmadataplus.com,robbazaren@rmadataplus.com,mark@rmadataplus.com",
+).split(",") if e.strip()]
+
+
+def _personalization(to_email):
+    """One SendGrid personalization: the dealer in To, the RMA team BCC'd.
+    Drops any BCC that duplicates the To address (SendGrid rejects duplicates)."""
+    p = {"to": [{"email": to_email}]}
+    bcc = [{"email": e} for e in ADF_BCC if e.lower() != to_email.lower()]
+    if bcc:
+        p["bcc"] = bcc
+    return p
+
 
 def _save_to_outbox(dealer, adf_xml, lead_id):
     os.makedirs(OUTBOX_DIR, exist_ok=True)
@@ -51,7 +67,7 @@ def send_adf(dealer, adf_xml, lead_id, lead=None):
 
     attachment = base64.b64encode(adf_xml.encode("utf-8")).decode("ascii")
     payload = {
-        "personalizations": [{"to": [{"email": to_email}]}],
+        "personalizations": [_personalization(to_email)],
         "from": {"email": from_email, "name": from_name},
         "subject": subject,
         "content": [
