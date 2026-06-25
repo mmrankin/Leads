@@ -46,7 +46,10 @@ from adf import build_adf
 from email_send import send_adf
 from email_validate import validate_email
 
-PRODUCT_CODE = pdb.PRODUCT_CREDIT_EST
+# This app serves the Credit Pipeline product (its ADF identity/source lineage),
+# and also honors the legacy Credit Estimator grant so existing dealers keep access.
+PRODUCT_CODE = pdb.PRODUCT_CREDIT_PIPELINE
+ACCESS_PRODUCTS = (pdb.PRODUCT_CREDIT_PIPELINE, pdb.PRODUCT_CREDIT_EST)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-change-me")
@@ -74,7 +77,7 @@ def _require_active_dealer(dealer_id):
     dealer = pdb.get_dealer(dealer_id)
     if not dealer:
         abort(404, description="Unknown dealer.")
-    if not pdb.dealer_has_product(dealer_id, PRODUCT_CODE):
+    if not pdb.dealer_has_any_product(dealer_id, ACCESS_PRODUCTS):
         abort(403)
     return dealer
 
@@ -141,7 +144,8 @@ def lead_form(dealer_id):
             banner_override=_banner_override(), step=1,
         ), 400
 
-    # Persist the lead and send the initial ADF (no estimate yet).
+    # Persist the lead first so its id can serve as the ADF source-lineage id,
+    # then build + attach the initial ADF (no estimate yet) and deliver it.
     lead = dict(form)
     lead["dealer_id"] = dealer_id
     lead["source"] = request.headers.get("Referer") or request.url
@@ -149,11 +153,14 @@ def lead_form(dealer_id):
     lead["tc_agreed_at"] = datetime.utcnow().isoformat()
     lead["email_verdict"] = validation.get("verdict")
     lead["email_score"] = validation.get("score")
-    adf_xml = build_adf(lead, dealer, estimate=None)
-    lead["adf_xml"] = adf_xml
-    status, detail = send_adf(dealer, adf_xml, lead_id="new", lead=lead)
-    lead["email1_status"], lead["email1_detail"] = status, detail
+    lead["adf_xml"] = None
+    lead["email1_status"], lead["email1_detail"] = "pending", None
     lead_id = db.insert_lead(lead)
+
+    lead["id"] = lead_id
+    adf_xml = build_adf(lead, dealer, estimate=None, product_code=PRODUCT_CODE)
+    db.update_adf(lead_id, adf_xml)
+    status, detail = send_adf(dealer, adf_xml, lead_id=lead_id, lead=lead)
     db.set_email_status(lead_id, 1, status, detail)
 
     # Carry the contact/vehicle context into page 2 via the session.
@@ -220,8 +227,8 @@ def deal(dealer_id):
     result = credit.compute(answers, deal_input, settings)
 
     # Update the lead with answers, deal, and the computed estimate; refresh ADF.
-    lead = {**data, **deal_input, "dealer_id": dealer_id}
-    full = build_adf(lead, dealer, estimate=result)
+    lead = {**data, **deal_input, "dealer_id": dealer_id, "id": data["lead_id"]}
+    full = build_adf(lead, dealer, estimate=result, product_code=PRODUCT_CODE)
     aff = result.get("affordability") or {}
     db.update_estimate(data["lead_id"], {
         **answers, **deal_input,
@@ -260,12 +267,12 @@ def trade_in_handoff(dealer_id):
 
     # Notify the dealer now (the trade-in app will follow up with its own ADFs).
     lead = {
-        "dealer_id": dealer_id,
+        "dealer_id": dealer_id, "id": data["lead_id"],
         "first_name": data.get("first_name"), "last_name": data.get("last_name"),
         "email": data.get("email"), "phone": data.get("phone"),
         "comments": "Customer requested a trade-in appraisal (from the Credit Estimator).",
     }
-    adf_xml = build_adf(lead, dealer, estimate=None)
+    adf_xml = build_adf(lead, dealer, estimate=None, product_code=PRODUCT_CODE)
     send_adf(dealer, adf_xml, lead_id=data["lead_id"], lead=lead)
 
     # Hand the contact off to the trade-in app. These are first-party apps on the

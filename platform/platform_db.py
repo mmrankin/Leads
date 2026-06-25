@@ -14,31 +14,44 @@ from dlrpro_db import NOW
 PRODUCT_LEAD_FORM = "LEAD_FORM"
 PRODUCT_TRADE_IN = "TRADE_IN"
 PRODUCT_CREDIT_EST = "CREDIT_EST"
+PRODUCT_CREDIT_PIPELINE = "CREDIT_PIPELINE"
 # CDP (cdp.dlrpro.com) modules — granted per dealer here, enforced by the CDP app.
 PRODUCT_CDP_VMS = "CDP_VMS"
 PRODUCT_CDP_CRM = "CDP_CRM"
 PRODUCT_CDP_PROSPECTING = "CDP_PROSPECTING"
+
+# The 4th tuple element is the product's default ADF "source" — the primary
+# (sequence=1) source name emitted on every outbound ADF/XML <id> for leads of
+# this product. It is admin-editable per product (Products page); init_db only
+# seeds it and backfills NULLs, so edits persist across restarts.
+DEFAULT_ADF_SOURCE = "RMA Data Plus"
 DEFAULT_PRODUCTS = [
-    (PRODUCT_LEAD_FORM, "Dealer Lead Form", "Customer lead-capture form with ADF/XML delivery."),
-    (PRODUCT_TRADE_IN, "Trade-In Widget", "Multi-step trade-in appraisal capture with ADF/XML delivery."),
-    (PRODUCT_CREDIT_EST, "Credit Estimator", "Lead form + FICO-range estimate, APR/payment, and affordability."),
-    (PRODUCT_CDP_VMS, "CDP · Vehicle Management", "Appraisal, VIN normalization, valuation, photos & inventory."),
-    (PRODUCT_CDP_CRM, "CDP · CRM", "Customer relationship management (coming soon)."),
-    (PRODUCT_CDP_PROSPECTING, "CDP · Prospecting", "Data mining & opportunity lists (coming soon)."),
+    (PRODUCT_LEAD_FORM, "Dealer Lead Form", "Customer lead-capture form with ADF/XML delivery.", DEFAULT_ADF_SOURCE),
+    (PRODUCT_TRADE_IN, "Trade-In Widget", "Multi-step trade-in appraisal capture with ADF/XML delivery.", DEFAULT_ADF_SOURCE),
+    (PRODUCT_CREDIT_EST, "Credit Estimator", "Lead form + FICO-range estimate, APR/payment, and affordability.", DEFAULT_ADF_SOURCE),
+    (PRODUCT_CREDIT_PIPELINE, "Credit Pipeline", "Credit lead pipeline with ADF/XML delivery and source lineage.", DEFAULT_ADF_SOURCE),
+    (PRODUCT_CDP_VMS, "CDP · Vehicle Management", "Appraisal, VIN normalization, valuation, photos & inventory.", DEFAULT_ADF_SOURCE),
+    (PRODUCT_CDP_CRM, "CDP · CRM", "Customer relationship management (coming soon).", DEFAULT_ADF_SOURCE),
+    (PRODUCT_CDP_PROSPECTING, "CDP · Prospecting", "Data mining & opportunity lists (coming soon).", DEFAULT_ADF_SOURCE),
 ]
 
 
 def init_db():
     """Ensure the default products exist (tables themselves are created by the
     one-time migrate_to_dlrpro.py). Idempotent."""
-    for code, name, desc in DEFAULT_PRODUCTS:
-        p = {"c": code, "n": name, "d": desc}
+    # Self-healing: the `source` column was added after the initial migration.
+    dlr.execute("IF COL_LENGTH('products', 'source') IS NULL "
+                "ALTER TABLE products ADD source NVARCHAR(200) NULL")
+    for code, name, desc, source in DEFAULT_PRODUCTS:
+        p = {"c": code, "n": name, "d": desc, "s": source}
         if dlr.one("SELECT 1 AS x FROM products WHERE product_code=%(c)s", p):
-            dlr.execute("UPDATE products SET product_name=%(n)s, description=%(d)s "
-                        "WHERE product_code=%(c)s", p)
+            # Keep name/desc in sync with code, but never clobber an admin-edited
+            # source — only backfill it when it's still NULL.
+            dlr.execute("UPDATE products SET product_name=%(n)s, description=%(d)s, "
+                        "source=COALESCE(source, %(s)s) WHERE product_code=%(c)s", p)
         else:
-            dlr.execute("INSERT INTO products (product_code, product_name, description) "
-                        "VALUES (%(c)s, %(n)s, %(d)s)", p)
+            dlr.execute("INSERT INTO products (product_code, product_name, description, source) "
+                        "VALUES (%(c)s, %(n)s, %(d)s, %(s)s)", p)
 
 
 # ----- dealers -----
@@ -73,6 +86,17 @@ def upsert_dealer(data):
 
 def list_products():
     return dlr.query("SELECT * FROM products ORDER BY product_name")
+
+
+def get_product(product_code):
+    """One product row (incl. its ADF `source`), or None."""
+    return dlr.one("SELECT * FROM products WHERE product_code=%(c)s", {"c": product_code})
+
+
+def update_product_source(product_code, source):
+    """Set a product's ADF primary source (sequence=1 source on outbound <id>)."""
+    dlr.execute("UPDATE products SET source=%(s)s WHERE product_code=%(c)s",
+                {"s": (source or None), "c": product_code})
 
 
 # ----- grants -----
@@ -118,6 +142,13 @@ def get_active_grant(dealer_id, product_code, on_date=None):
 
 def dealer_has_product(dealer_id, product_code, on_date=None):
     return get_active_grant(dealer_id, product_code, on_date) is not None
+
+
+def dealer_has_any_product(dealer_id, product_codes, on_date=None):
+    """True if the dealer has an active grant for ANY of the given product codes.
+    Used where one app serves more than one product (e.g. the credit app serves
+    both Credit Estimator and Credit Pipeline)."""
+    return any(dealer_has_product(dealer_id, c, on_date) for c in product_codes)
 
 
 # ----- valuation settings -----

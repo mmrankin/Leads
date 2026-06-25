@@ -40,6 +40,12 @@ def insert_lead(data):
     return dlr.insert(f"INSERT INTO credit_leads ({cols}) VALUES ({ph})", v)
 
 
+def update_adf(lead_id, adf_xml):
+    """Attach the initial ADF/XML after insert (the lead id is part of the ADF)."""
+    dlr.execute("UPDATE credit_leads SET adf_xml=%(a)s WHERE id=%(id)s",
+                {"a": adf_xml, "id": lead_id})
+
+
 def update_estimate(lead_id, data):
     """Apply deal-page answers + computed estimate + refreshed ADF."""
     v = {k: data.get(k) for k in ESTIMATE_FIELDS}

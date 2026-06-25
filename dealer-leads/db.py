@@ -27,6 +27,12 @@ def insert_lead(data):
     return dlr.insert(f"INSERT INTO leads ({cols}) VALUES ({ph})", v)
 
 
+def update_adf(lead_id, adf_xml):
+    """Attach the ADF/XML after insert (the lead id is part of the ADF)."""
+    dlr.execute("UPDATE leads SET adf_xml=%(a)s WHERE id=%(id)s",
+                {"a": adf_xml, "id": lead_id})
+
+
 def update_lead_email_status(lead_id, status, detail=None):
     dlr.execute(
         "UPDATE leads SET email_status=%(s)s, email_detail=%(d)s WHERE id=%(id)s",

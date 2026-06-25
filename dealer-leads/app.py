@@ -145,17 +145,21 @@ def lead_form(dealer_id):
             ymm=vin_db.is_enabled(), banner_override=_banner_override(),
         ), 400
 
-    # Build ADF/XML and persist the lead.
+    # Persist the lead first so its id can serve as the ADF source-lineage id,
+    # then build + attach the ADF/XML and deliver it.
     lead = dict(form)
     lead["dealer_id"] = dealer_id
     lead["source"] = request.headers.get("Referer") or request.url
     lead["email_verdict"] = validation.get("verdict")
     lead["email_score"] = validation.get("score")
-    adf_xml = build_adf(lead, dealer)
-    lead["adf_xml"] = adf_xml
+    lead["adf_xml"] = None
     lead["email_status"] = "pending"
     lead["email_detail"] = None
     lead_id = db.insert_lead(lead)
+
+    lead["id"] = lead_id
+    adf_xml = build_adf(lead, dealer, product_code=PRODUCT_CODE)
+    db.update_adf(lead_id, adf_xml)
 
     # Deliver the ADF/XML to the dealer's leadEmailAddress.
     status, detail = send_adf(dealer, adf_xml, lead_id, lead=lead)

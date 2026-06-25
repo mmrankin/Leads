@@ -9,6 +9,14 @@ an updated version (with condition + value) after the final step.
 from datetime import datetime, timezone
 from xml.sax.saxutils import escape
 
+try:                       # platform/ is on sys.path in the app process
+    import platform_db as _pdb
+except Exception:          # keep ADF generation working even if the DB is down
+    _pdb = None
+
+DEFAULT_PRODUCT_NAME = "Trade-In Widget"
+DEFAULT_SOURCE = "RMA Data Plus"
+
 _CONDITION_LABELS = [
     ("num_keys", "Number of keys"),
     ("unrepaired_damage", "Un-repaired damage"),
@@ -33,6 +41,29 @@ def _el(tag, value, attrs=None, indent=0):
         attr_str = "".join(f' {k}="{escape(str(v))}"' for k, v in attrs.items() if v)
     pad = " " * indent
     return f"{pad}<{tag}{attr_str}>{escape(str(value))}</{tag}>\n"
+
+
+def _product_meta(product_code):
+    """(source, product_name) for this product — the ADF source lineage. seq=1
+    source is the product's configured `source` (e.g. 'RMA Data Plus'); seq=2
+    source is the product name. Falls back to defaults if the lookup fails."""
+    source, name = DEFAULT_SOURCE, DEFAULT_PRODUCT_NAME
+    if _pdb and product_code:
+        try:
+            p = _pdb.get_product(product_code)
+            if p:
+                source = p.get("source") or source
+                name = p.get("product_name") or name
+        except Exception:
+            pass
+    return source, name
+
+
+def _id_lineage(id_value, source, product_name, indent=4):
+    """Two <id> elements tracking this prospect's source history:
+    sequence=1 = the primary source, sequence=2 = this product."""
+    return (_el("id", id_value, {"sequence": "1", "source": source}, indent=indent)
+            + _el("id", id_value, {"sequence": "2", "source": product_name}, indent=indent))
 
 
 def _comments(lead, valuation):
@@ -64,20 +95,23 @@ def _comments(lead, valuation):
     return "\n".join(lines)
 
 
-def build_adf(lead, dealer, valuation=None, request_dt=None):
+def build_adf(lead, dealer, valuation=None, request_dt=None, product_code=None):
     if request_dt is None:
         request_dt = datetime.now(timezone.utc)
     requestdate = request_dt.strftime("%Y-%m-%dT%H:%M:%S%z")
     if requestdate and requestdate[-5] in "+-":
         requestdate = requestdate[:-2] + ":" + requestdate[-2:]
 
+    source, product_name = _product_meta(product_code)
+    id_value = lead.get("serial") or lead.get("id") or lead.get("lead_id")
+
     p = []
     p.append('<?ADF version="1.0"?>\n')
     p.append('<?xml version="1.0" encoding="UTF-8"?>\n')
     p.append("<adf>\n")
     p.append("  <prospect>\n")
+    p.append(_id_lineage(id_value, source, product_name, indent=4))
     p.append(_el("requestdate", requestdate, indent=4))
-    p.append(_el("id", lead.get("serial"), {"sequence": "1", "source": "TradeInOffer"}, indent=4))
 
     # The trade-in vehicle.
     p.append('    <vehicle interest="trade-in" status="used">\n')
@@ -121,7 +155,7 @@ def build_adf(lead, dealer, valuation=None, request_dt=None):
     p.append("    </vendor>\n")
 
     p.append("    <provider>\n")
-    p.append(_el("name", "Trade-In Widget", {"part": "full"}, indent=6))
+    p.append(_el("name", product_name, {"part": "full"}, indent=6))
     p.append("    </provider>\n")
 
     p.append("  </prospect>\n")

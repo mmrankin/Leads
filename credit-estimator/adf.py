@@ -8,6 +8,14 @@ estimate on page 2 (the second, updated email).
 from datetime import datetime, timezone
 from xml.sax.saxutils import escape
 
+try:                       # platform/ is on sys.path in the app process
+    import platform_db as _pdb
+except Exception:          # keep ADF generation working even if the DB is down
+    _pdb = None
+
+DEFAULT_PRODUCT_NAME = "Credit Pipeline"
+DEFAULT_SOURCE = "RMA Data Plus"
+
 
 def _el(tag, value, attrs=None, indent=0):
     if value is None or str(value).strip() == "":
@@ -19,6 +27,29 @@ def _el(tag, value, attrs=None, indent=0):
         )
     pad = " " * indent
     return f"{pad}<{tag}{attr_str}>{escape(str(value))}</{tag}>\n"
+
+
+def _product_meta(product_code):
+    """(source, product_name) for this product — the ADF source lineage. seq=1
+    source is the product's configured `source` (e.g. 'RMA Data Plus'); seq=2
+    source is the product name. Falls back to defaults if the lookup fails."""
+    source, name = DEFAULT_SOURCE, DEFAULT_PRODUCT_NAME
+    if _pdb and product_code:
+        try:
+            p = _pdb.get_product(product_code)
+            if p:
+                source = p.get("source") or source
+                name = p.get("product_name") or name
+        except Exception:
+            pass
+    return source, name
+
+
+def _id_lineage(id_value, source, product_name, indent=4):
+    """Two <id> elements tracking this prospect's source history:
+    sequence=1 = the primary source, sequence=2 = this product."""
+    return (_el("id", id_value, {"sequence": "1", "source": source}, indent=indent)
+            + _el("id", id_value, {"sequence": "2", "source": product_name}, indent=indent))
 
 
 def _estimate_summary(est):
@@ -43,7 +74,7 @@ def _estimate_summary(est):
     return "\n".join(lines)
 
 
-def build_adf(lead, dealer, estimate=None, request_dt=None):
+def build_adf(lead, dealer, estimate=None, request_dt=None, product_code=None):
     """Return an ADF/XML string. If estimate is given, include the finance
     block + the credit summary in the comments."""
     if request_dt is None:
@@ -52,11 +83,15 @@ def build_adf(lead, dealer, estimate=None, request_dt=None):
     if requestdate and requestdate[-5] in "+-":
         requestdate = requestdate[:-2] + ":" + requestdate[-2:]
 
+    source, product_name = _product_meta(product_code)
+    id_value = lead.get("serial") or lead.get("id") or lead.get("lead_id")
+
     parts = []
     parts.append('<?ADF version="1.0"?>\n')
     parts.append('<?xml version="1.0" encoding="UTF-8"?>\n')
     parts.append("<adf>\n")
     parts.append("  <prospect>\n")
+    parts.append(_id_lineage(id_value, source, product_name, indent=4))
     parts.append(_el("requestdate", requestdate, indent=4))
 
     # Vehicle of interest (optional).
@@ -119,7 +154,7 @@ def build_adf(lead, dealer, estimate=None, request_dt=None):
 
     # Provider = this product.
     parts.append("    <provider>\n")
-    parts.append(_el("name", "Credit Estimator", {"part": "full"}, indent=6))
+    parts.append(_el("name", product_name, {"part": "full"}, indent=6))
     parts.append("    </provider>\n")
 
     parts.append("  </prospect>\n")

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Products</h1>
+
+<div class="card">
+    <h2>Product Catalog ({{ products|length }})</h2>
+    <p class="subtitle">
+        The <strong>ADF Source</strong> is the primary (sequence&nbsp;1) source name stamped on
+        every outbound ADF/XML <code>&lt;id&gt;</code> for this product's leads. The product
+        name is emitted as the sequence&nbsp;2 source. Example for Credit Pipeline:
+        <code>&lt;id sequence="1" source="RMA Data Plus"&gt;</code> then
+        <code>&lt;id sequence="2" source="Credit Pipeline"&gt;</code>.
+    </p>
+    {% if products %}
+    <table class="tbl">
+        <thead><tr><th>Product</th><th>Code</th><th>ADF Source (seq 1)</th><th></th></tr></thead>
+        <tbody>
+        {% for p in products %}
+        <tr>
+            <td>{{ p.product_name }}</td>
+            <td><code>{{ p.product_code }}</code></td>
+            <td colspan="2">
+                <form method="post" action="{{ url_for('save_product_source') }}" style="display:flex;gap:8px;align-items:center">
+                    <input type="hidden" name="product_code" value="{{ p.product_code }}">
+                    <input name="source" value="{{ p.source or '' }}" placeholder="RMA Data Plus" style="min-width:18rem">
+                    <button type="submit" class="btn">Save</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="subtitle">No products defined.</p>
+    {% endif %}
+</div>
+{% endblock %}

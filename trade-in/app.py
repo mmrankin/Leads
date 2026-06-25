@@ -131,7 +131,7 @@ def _open_trade_lead(dealer_id, dealer, data, validation=None):
         lead["offer_url"] = url_for("offer", serial=serial, _external=True)
     except Exception:
         lead["offer_url"] = None
-    adf_xml = build_adf(lead, dealer, valuation=None)
+    adf_xml = build_adf(lead, dealer, valuation=None, product_code=PRODUCT_CODE)
     lead["adf_xml"] = adf_xml
     status, detail = send_adf(dealer, adf_xml, lead_id="new", lead=lead, updated=False)
     lead["email1_status"], lead["email1_detail"] = status, detail
@@ -271,7 +271,8 @@ def step_condition(dealer_id):
     settings = pdb.get_valuation_settings(dealer_id)
     result = valuation_mod.compute_value(lead, settings)
 
-    adf_xml = build_adf(lead, dealer, valuation=result if result.get("ok") else None)
+    adf_xml = build_adf(lead, dealer, valuation=result if result.get("ok") else None,
+                        product_code=PRODUCT_CODE)
     val_cols = {}
     if result.get("ok"):
         val_cols = {"value_estimate": result.get("final_value"),

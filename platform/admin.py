@@ -31,13 +31,15 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
 # Where each product's customer-facing app lives, so the admin can link to a
 # dealer's live form. Override per environment in .env.
+_CREDIT_BASE = os.environ.get("CREDIT_EST_BASE_URL", "http://localhost:5003")
 PRODUCT_BASE_URLS = {
     pdb.PRODUCT_LEAD_FORM: os.environ.get("LEAD_FORM_BASE_URL", "http://localhost:5000"),
     pdb.PRODUCT_TRADE_IN: os.environ.get("TRADE_IN_BASE_URL", "http://localhost:5001"),
-    pdb.PRODUCT_CREDIT_EST: os.environ.get("CREDIT_EST_BASE_URL", "http://localhost:5003"),
+    pdb.PRODUCT_CREDIT_EST: _CREDIT_BASE,
+    pdb.PRODUCT_CREDIT_PIPELINE: _CREDIT_BASE,   # served by the same credit app
 }
 PRODUCT_PATHS = {pdb.PRODUCT_LEAD_FORM: "/d/", pdb.PRODUCT_TRADE_IN: "/t/",
-                 pdb.PRODUCT_CREDIT_EST: "/c/"}
+                 pdb.PRODUCT_CREDIT_EST: "/c/", pdb.PRODUCT_CREDIT_PIPELINE: "/c/"}
 
 
 def product_url(product_code, dealer_id):
@@ -102,6 +104,25 @@ def index():
         dealers=pdb.list_dealers(),
         states=US_STATES,
     )
+
+
+@app.route("/products")
+@require_login
+def products():
+    return render_template("products.html", products=pdb.list_products())
+
+
+@app.route("/product/source", methods=["POST"])
+@require_login
+def save_product_source():
+    code = (request.form.get("product_code") or "").strip()
+    source = (request.form.get("source") or "").strip()
+    if not code:
+        flash("Missing product.", "error")
+    else:
+        pdb.update_product_source(code, source)
+        flash(f"Saved source for {code}.", "ok")
+    return redirect(url_for("products"))
 
 
 @app.route("/dealer", methods=["POST"])
