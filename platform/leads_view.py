@@ -124,13 +124,14 @@ CREDIT_GROUPS = [
                   "monthly_payment", "max_vehicle_price"]),
     ("Delivery", ["stage", "email_verdict", "email_score",
                   "email1_status", "email1_detail",
-                  "email2_status", "email2_detail", "source",
+                  "email2_status", "email2_detail", "source", "subsource",
                   "created_at", "updated_at"]),
 ]
 
 FIELD_LABELS = {
     "first_name": "First name", "last_name": "Last name", "email": "Email",
     "phone": "Phone", "comments": "Comments", "source": "Source",
+    "subsource": "Sub-source",
     "tc_agreed": "Agreed to T&C", "tc_agreed_at": "T&C agreed at",
     "vehicle_year": "Year", "vehicle_make": "Make", "vehicle_model": "Model",
     "vehicle_trim": "Trim", "miles": "Mileage",

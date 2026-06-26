@@ -35,13 +35,14 @@ if PLATFORM_DIR not in sys.path:
     sys.path.insert(0, PLATFORM_DIR)
 
 from flask import (
-    Flask, abort, redirect, render_template, request, session, url_for
+    Flask, abort, jsonify, redirect, render_template, request, session, url_for
 )
 
 import platform_db as pdb
 import contact_cookie
 import db
 import credit
+import vin_db
 from adf import build_adf
 from email_send import send_adf
 from email_validate import validate_email
@@ -298,6 +299,130 @@ def results(dealer_id):
     if not result:
         return redirect(url_for("lead_form", dealer_id=dealer_id))
     return render_template("results.html", dealer=dealer, est=result, step=4)
+
+
+# ----- test lead (a copy of the Dealer Lead Form capture page) -----
+#
+# A staff tool to fire a real ADF/XML lead at the dealer so they can confirm
+# end-to-end delivery for the Credit Pipeline product. The form is a copy of the
+# dealer-leads capture page (name/email/phone, Year/Make/Model, comments, T&C)
+# plus the Credit Pipeline sub-source. The lead carries the product's ADF source
+# lineage (provider name "Credit Pipeline") with the chosen sub-source.
+SUBSOURCES = ("Trigger Lead", "Auto Inquiry (combined)")
+
+
+@app.route("/c/<dealer_id>/test-lead", methods=["GET", "POST"])
+def test_lead(dealer_id):
+    dealer = _require_active_dealer(dealer_id)
+
+    if request.method == "GET":
+        # Pre-fill contact from the shared cookie; allow ?year=&make=&model=.
+        prefill = dict(contact_cookie.read(request))
+        for short, full in (
+            ("year", "vehicle_year"),
+            ("make", "vehicle_make"),
+            ("model", "vehicle_model"),
+        ):
+            val = (request.args.get(short) or request.args.get(full) or "").strip()
+            if val:
+                prefill[full] = val
+        return render_template(
+            "test_lead.html", dealer=dealer, errors={}, form=prefill,
+            ymm=vin_db.is_enabled(), banner_override=_banner_override(),
+            subsources=SUBSOURCES, sent=request.args.get("sent") == "1",
+        )
+
+    form = {k: (request.form.get(k) or "").strip() for k in (
+        "first_name", "last_name", "email", "phone", "comments",
+        "vehicle_year", "vehicle_make", "vehicle_model", "subsource",
+    )}
+    tc = request.form.get("tc_agree") == "on"
+
+    # Validation: email OR phone is required; a sub-source and T&C are required.
+    errors = {}
+    if not form["email"] and not form["phone"]:
+        errors["contact"] = "Please provide an email address or a phone number."
+    if form["email"] and "@" not in form["email"]:
+        errors["email"] = "Please enter a valid email address."
+    if form["subsource"] not in SUBSOURCES:
+        errors["subsource"] = "Please choose a sub-source."
+    if not tc:
+        errors["tc"] = "Please agree to the terms and conditions."
+
+    validation = {"verdict": None, "score": None}
+    if not errors and form["email"]:
+        validation = validate_email(form["email"])
+        if not validation["accept"]:
+            errors["email"] = (
+                "That email address doesn't appear to be deliverable. "
+                "Please check it, or leave it blank and provide a phone number."
+            )
+
+    if errors:
+        return render_template(
+            "test_lead.html", dealer=dealer, errors=errors, form=form,
+            ymm=vin_db.is_enabled(), banner_override=_banner_override(),
+            subsources=SUBSOURCES, sent=False,
+        ), 400
+
+    # Persist the lead first so its id is the ADF source-lineage id, then build +
+    # attach the ADF (Credit Pipeline product, chosen sub-source) and deliver it.
+    lead = dict(form)
+    lead["dealer_id"] = dealer_id
+    lead["source"] = "Credit Pipeline test-lead tool"
+    lead["tc_agreed"] = 1
+    lead["tc_agreed_at"] = datetime.utcnow().isoformat()
+    lead["email_verdict"] = validation.get("verdict")
+    lead["email_score"] = validation.get("score")
+    lead["adf_xml"] = None
+    lead["email1_status"], lead["email1_detail"] = "pending", None
+    lead_id = db.insert_lead(lead)
+
+    lead["id"] = lead_id
+    adf_xml = build_adf(lead, dealer, estimate=None, product_code=PRODUCT_CODE,
+                        subsource=form["subsource"])
+    db.update_adf(lead_id, adf_xml)
+    status, detail = send_adf(dealer, adf_xml, lead_id=lead_id, lead=lead)
+    db.set_email_status(lead_id, 1, status, detail)
+
+    return redirect(url_for("test_lead", dealer_id=dealer_id, sent="1"))
+
+
+# ----- vehicle Year/Make/Model lookup (powers the test-lead dropdowns) -----
+
+@app.route("/api/vehicle/years")
+def api_years():
+    if not vin_db.is_enabled():
+        return jsonify([])
+    try:
+        return jsonify(vin_db.get_years())
+    except Exception as exc:  # never break the form on a lookup failure
+        app.logger.warning("YMM years lookup failed: %s", exc)
+        return jsonify([])
+
+
+@app.route("/api/vehicle/makes")
+def api_makes():
+    if not vin_db.is_enabled():
+        return jsonify([])
+    try:
+        return jsonify(vin_db.get_makes(request.args.get("year")))
+    except Exception as exc:
+        app.logger.warning("YMM makes lookup failed: %s", exc)
+        return jsonify([])
+
+
+@app.route("/api/vehicle/models")
+def api_models():
+    if not vin_db.is_enabled():
+        return jsonify([])
+    try:
+        return jsonify(
+            vin_db.get_models(request.args.get("year"), request.args.get("make"))
+        )
+    except Exception as exc:
+        app.logger.warning("YMM models lookup failed: %s", exc)
+        return jsonify([])
 
 
 if __name__ == "__main__":

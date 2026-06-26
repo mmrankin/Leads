@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Runs the Credit Pipeline lead poller every 60 seconds as a user LaunchAgent.
+     Copy to ~/Library/LaunchAgents/ and `launchctl load` it.
+     launchd will not start a second copy while one is still running, so runs
+     never overlap. The poller checks the global flow switch (platform admin) and
+     exits immediately when it is OFF, so it is cheap to leave loaded. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dealerplatform.pipeline</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/markrankin/claude/credit-estimator/run_poller.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>60</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/markrankin/claude/deploy/pipeline.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/markrankin/claude/deploy/pipeline.err.log</string>
+</dict>
+</plist>

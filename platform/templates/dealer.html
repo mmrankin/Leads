@@ -165,7 +165,9 @@
 </script>
 
 <div class="card">
-    <h2>Credit Estimator</h2>
+    <h2>Credit Estimator{% if credit_test_url %}
+        <a href="{{ credit_test_url }}" target="_blank" rel="noopener" style="font-size:0.8rem;font-weight:normal;margin-left:0.75rem;">Send a test lead ↗</a>
+    {% endif %}</h2>
     {% set apr_labels = {
         'apr_exceptional': 'Exceptional (800–850)',
         'apr_very_good': 'Very Good (740–799)',

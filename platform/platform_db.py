@@ -39,6 +39,7 @@ DEFAULT_PRODUCTS = [
 def init_db():
     """Ensure the default products exist (tables themselves are created by the
     one-time migrate_to_dlrpro.py). Idempotent."""
+    _ensure_pipeline_tables()
     # Self-healing: the `source` column was added after the initial migration.
     dlr.execute("IF COL_LENGTH('products', 'source') IS NULL "
                 "ALTER TABLE products ADD source NVARCHAR(200) NULL")
@@ -245,3 +246,111 @@ def get_credit_settings(dealer_id):
 
 def upsert_credit_settings(data):
     _upsert_settings("dealer_credit_settings", CREDIT_SETTING_FIELDS, data)
+
+
+# ----- platform settings + Credit Pipeline lead flow -----
+#
+# A small key/value settings table holds the global Credit Pipeline on/off
+# switch and the poller's high-water mark. credit_pipeline_sent is the
+# send-once ledger: one row per match_result.result_id ever processed.
+
+def _ensure_pipeline_tables():
+    """Create the settings + Credit Pipeline ledger tables if missing. Idempotent."""
+    dlr.execute(
+        "IF OBJECT_ID(N'dbo.platform_settings','U') IS NULL "
+        "CREATE TABLE dbo.platform_settings ("
+        " setting_key NVARCHAR(64) NOT NULL PRIMARY KEY,"
+        " setting_value NVARCHAR(MAX) NULL,"
+        " updated_at NVARCHAR(32) NULL)")
+    dlr.execute(
+        "IF OBJECT_ID(N'dbo.credit_pipeline_sent','U') IS NULL "
+        "CREATE TABLE dbo.credit_pipeline_sent ("
+        " result_id BIGINT NOT NULL PRIMARY KEY,"
+        " retailer_name NVARCHAR(200) NULL,"
+        " dealer_id NVARCHAR(64) NULL,"
+        " lead_id INT NULL,"
+        " subsource NVARCHAR(255) NULL,"
+        " status NVARCHAR(32) NULL,"
+        " detail NVARCHAR(MAX) NULL,"
+        " sent_at NVARCHAR(32) NULL)")
+
+
+def get_setting(key, default=None):
+    row = dlr.one("SELECT setting_value AS v FROM platform_settings WHERE setting_key=%(k)s",
+                  {"k": key})
+    return row["v"] if row else default
+
+
+def set_setting(key, value):
+    v = {"k": key, "v": value}
+    if dlr.one("SELECT 1 AS x FROM platform_settings WHERE setting_key=%(k)s", v):
+        dlr.execute(f"UPDATE platform_settings SET setting_value=%(v)s, updated_at={NOW} "
+                    "WHERE setting_key=%(k)s", v)
+    else:
+        dlr.execute("INSERT INTO platform_settings (setting_key, setting_value, updated_at) "
+                    f"VALUES (%(k)s, %(v)s, {NOW})", v)
+
+
+PIPELINE_FLOW_KEY = "credit_pipeline_flow_enabled"
+PIPELINE_WATERMARK_KEY = "credit_pipeline_last_result_id"
+
+
+def get_pipeline_flow():
+    """Global Credit Pipeline lead-flow switch (default OFF)."""
+    return get_setting(PIPELINE_FLOW_KEY, "0") == "1"
+
+
+def set_pipeline_flow(enabled):
+    set_setting(PIPELINE_FLOW_KEY, "1" if enabled else "0")
+
+
+def get_pipeline_watermark():
+    try:
+        return int(get_setting(PIPELINE_WATERMARK_KEY, "0") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def set_pipeline_watermark(result_id):
+    set_setting(PIPELINE_WATERMARK_KEY, str(int(result_id)))
+
+
+def find_dealer_by_name(name):
+    """Platform dealer whose name matches the retailer name (case/space-insensitive)."""
+    if not name or not name.strip():
+        return None
+    return dlr.one(
+        "SELECT * FROM dealers WHERE LOWER(LTRIM(RTRIM(dealer_name)))="
+        "LOWER(LTRIM(RTRIM(%(n)s)))", {"n": name.strip()})
+
+
+def pipeline_sent_result_ids(ids):
+    """Subset of the given result_ids already in the send-once ledger."""
+    ints = [int(i) for i in ids if i is not None]
+    if not ints:
+        return set()
+    inlist = ",".join(str(i) for i in ints)
+    rows = dlr.query(f"SELECT result_id FROM credit_pipeline_sent WHERE result_id IN ({inlist})")
+    return {int(r["result_id"]) for r in rows}
+
+
+def pipeline_claim(result_id, retailer_name):
+    """Insert a 'sending' ledger row. Returns True if newly claimed, False if the
+    result_id was already present (so a prior/parallel run owns it)."""
+    try:
+        dlr.execute(
+            "INSERT INTO credit_pipeline_sent (result_id, retailer_name, status, sent_at) "
+            f"VALUES (%(r)s, %(n)s, 'sending', {NOW})",
+            {"r": int(result_id), "n": (retailer_name or None)})
+        return True
+    except Exception:
+        return False
+
+
+def pipeline_finalize(result_id, dealer_id, lead_id, subsource, status, detail):
+    dlr.execute(
+        "UPDATE credit_pipeline_sent SET dealer_id=%(d)s, lead_id=%(l)s, "
+        f"subsource=%(ss)s, status=%(s)s, detail=%(det)s, sent_at={NOW} "
+        "WHERE result_id=%(r)s",
+        {"r": int(result_id), "d": dealer_id, "l": lead_id, "ss": subsource,
+         "s": status, "det": (detail or "")[:3900]})

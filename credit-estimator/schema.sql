@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS credit_leads (
     email1_detail   TEXT,
     email2_status   TEXT,                              -- ADF after page 2 (with estimate)
     email2_detail   TEXT,
-    source          TEXT,
+    source          TEXT,                              -- lead source (e.g. referer / "Credit Pipeline")
+    subsource       TEXT,                              -- lead sub-source (e.g. "Trigger Lead")
     created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT    NOT NULL DEFAULT (datetime('now')),
 
