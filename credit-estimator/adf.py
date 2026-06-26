@@ -96,10 +96,11 @@ def build_adf(lead, dealer, estimate=None, request_dt=None, product_code=None,
     parts.append(_id_lineage(id_value, source, product_name, indent=4))
     parts.append(_el("requestdate", requestdate, indent=4))
 
-    # Vehicle of interest (optional).
+    # Vehicle (optional). Credit Pipeline leads are sell/trade intent.
     if any(lead.get(k) for k in ("vehicle_year", "vehicle_make", "vehicle_model")):
         status = "new" if (estimate and estimate.get("vehicle_condition") == "new") else "used"
-        parts.append(f'    <vehicle interest="buy" status="{status}">\n')
+        interest = "sell" if product_code == "CREDIT_PIPELINE" else "buy"
+        parts.append(f'    <vehicle interest="{interest}" status="{status}">\n')
         parts.append(_el("year", lead.get("vehicle_year"), indent=6))
         parts.append(_el("make", lead.get("vehicle_make"), indent=6))
         parts.append(_el("model", lead.get("vehicle_model"), indent=6))
@@ -116,6 +117,14 @@ def build_adf(lead, dealer, estimate=None, request_dt=None, product_code=None,
     parts.append(_el("name", lead.get("last_name"), {"part": "last"}, indent=8))
     parts.append(_el("email", lead.get("email"), indent=8))
     parts.append(_el("phone", lead.get("phone"), {"type": "voice"}, indent=8))
+    if any(lead.get(k) for k in ("address", "city", "state", "zip")):
+        parts.append('        <address type="home">\n')
+        parts.append(_el("street", lead.get("address"), {"line": "1"}, indent=10))
+        parts.append(_el("city", lead.get("city"), indent=10))
+        parts.append(_el("regioncode", lead.get("state"), indent=10))
+        parts.append(_el("postalcode", lead.get("zip"), indent=10))
+        parts.append(_el("country", "US", indent=10))
+        parts.append("        </address>\n")
     parts.append("      </contact>\n")
     parts.append(_el("comments", comments, indent=6))
     parts.append("    </customer>\n")

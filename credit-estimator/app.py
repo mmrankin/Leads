@@ -313,10 +313,13 @@ def results(dealer_id):
 
 # ----- Credit Pipeline lead form (a duplicate of the Dealer Lead Form) -----
 #
-# The public Credit Pipeline capture page at /p/<dealer_id>: name/email/phone,
-# Year/Make/Model, comments, T&C — identical to the Dealer Lead Form, but served
-# by the credit app and stamped with the Credit Pipeline product's ADF source
-# lineage. (The /c/ routes remain the multi-step Credit Estimator flow.)
+# The public Credit Pipeline capture page at /p/<dealer_id>: contact + address,
+# Year/Make/Model, comments, T&C — based on the Dealer Lead Form, served by the
+# credit app and stamped with the Credit Pipeline product's ADF source lineage
+# and a fixed "Soft Pull Trigger" sub-source. (The /c/ routes remain the
+# multi-step Credit Estimator flow.)
+PIPELINE_SUBSOURCE = "Soft Pull Trigger"
+
 
 @app.route("/p/<dealer_id>", methods=["GET", "POST"])
 def pipeline_form(dealer_id):
@@ -340,6 +343,7 @@ def pipeline_form(dealer_id):
 
     form = {k: (request.form.get(k) or "").strip() for k in (
         "first_name", "last_name", "email", "phone", "comments",
+        "address", "city", "state", "zip",
         "vehicle_year", "vehicle_make", "vehicle_model",
     )}
     tc = request.form.get("tc_agree") == "on"
@@ -373,6 +377,7 @@ def pipeline_form(dealer_id):
     lead = dict(form)
     lead["dealer_id"] = dealer_id
     lead["source"] = request.headers.get("Referer") or request.url
+    lead["subsource"] = PIPELINE_SUBSOURCE
     lead["tc_agreed"] = 1
     lead["tc_agreed_at"] = datetime.utcnow().isoformat()
     lead["email_verdict"] = validation.get("verdict")
@@ -382,7 +387,8 @@ def pipeline_form(dealer_id):
     lead_id = db.insert_lead(lead)
 
     lead["id"] = lead_id
-    adf_xml = build_adf(lead, dealer, estimate=None, product_code=PRODUCT_CODE)
+    adf_xml = build_adf(lead, dealer, estimate=None, product_code=PRODUCT_CODE,
+                        subsource=PIPELINE_SUBSOURCE)
     db.update_adf(lead_id, adf_xml)
     status, detail = send_adf(dealer, adf_xml, lead_id=lead_id, lead=lead)
     db.set_email_status(lead_id, 1, status, detail)

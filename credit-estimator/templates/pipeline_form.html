@@ -35,6 +35,25 @@
             </div>
         </div>
 
+        <div class="field">
+            <label for="address">Address</label>
+            <input type="text" id="address" name="address" value="{{ form.address or '' }}">
+        </div>
+        <div class="row">
+            <div class="field">
+                <label for="city">City</label>
+                <input type="text" id="city" name="city" value="{{ form.city or '' }}">
+            </div>
+            <div class="field">
+                <label for="state">State</label>
+                <input type="text" id="state" name="state" maxlength="2" value="{{ form.state or '' }}">
+            </div>
+            <div class="field">
+                <label for="zip">Zip</label>
+                <input type="text" id="zip" name="zip" value="{{ form.zip or '' }}">
+            </div>
+        </div>
+
         <fieldset class="vehicle">
             <legend>Vehicle of Interest <span class="optional">(optional)</span></legend>
             <div class="row">

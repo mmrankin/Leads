@@ -113,7 +113,8 @@ TRADE_IN_GROUPS = [
                   "email2_status", "email2_detail", "created_at", "updated_at"]),
 ]
 CREDIT_GROUPS = [
-    ("Customer", ["first_name", "last_name", "email", "phone", "comments",
+    ("Customer", ["first_name", "last_name", "email", "phone",
+                  "address", "city", "state", "zip", "comments",
                   "tc_agreed", "tc_agreed_at"]),
     ("Credit questionnaire", ["payment_history", "utilization", "credit_age",
                               "derogatory"]),
@@ -132,6 +133,7 @@ FIELD_LABELS = {
     "first_name": "First name", "last_name": "Last name", "email": "Email",
     "phone": "Phone", "comments": "Comments", "source": "Source",
     "subsource": "Sub-source",
+    "address": "Address", "city": "City", "state": "State", "zip": "Zip",
     "tc_agreed": "Agreed to T&C", "tc_agreed_at": "T&C agreed at",
     "vehicle_year": "Year", "vehicle_make": "Make", "vehicle_model": "Model",
     "vehicle_trim": "Trim", "miles": "Mileage",

@@ -29,7 +29,7 @@ DEFAULT_PRODUCTS = [
     (PRODUCT_LEAD_FORM, "Dealer Lead Form", "Customer lead-capture form with ADF/XML delivery.", DEFAULT_ADF_SOURCE),
     (PRODUCT_TRADE_IN, "Trade-In Widget", "Multi-step trade-in appraisal capture with ADF/XML delivery.", DEFAULT_ADF_SOURCE),
     (PRODUCT_CREDIT_EST, "Credit Estimator", "Lead form + FICO-range estimate, APR/payment, and affordability.", DEFAULT_ADF_SOURCE),
-    (PRODUCT_CREDIT_PIPELINE, "Credit Pipeline", "Credit lead pipeline with ADF/XML delivery and source lineage.", DEFAULT_ADF_SOURCE),
+    (PRODUCT_CREDIT_PIPELINE, "Credit Pipeline", "Credit lead pipeline with ADF/XML delivery and source lineage.", "Credit Pipeline"),
     (PRODUCT_CDP_VMS, "CDP · Vehicle Management", "Appraisal, VIN normalization, valuation, photos & inventory.", DEFAULT_ADF_SOURCE),
     (PRODUCT_CDP_CRM, "CDP · CRM", "Customer relationship management (coming soon).", DEFAULT_ADF_SOURCE),
     (PRODUCT_CDP_PROSPECTING, "CDP · Prospecting", "Data mining & opportunity lists (coming soon).", DEFAULT_ADF_SOURCE),
