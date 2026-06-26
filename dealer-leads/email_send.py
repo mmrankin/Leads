@@ -20,6 +20,9 @@ ADF_BCC = [e.strip() for e in os.environ.get(
     "justinstull@rmadataplus.com,robbazaren@rmadataplus.com,mark@rmadataplus.com",
 ).split(",") if e.strip()]
 
+# Reply-To on every outbound lead email (env override: LEAD_REPLY_TO).
+LEAD_REPLY_TO = os.environ.get("LEAD_REPLY_TO", "noreply@rmadataplus.com")
+
 
 def _personalization(to_email):
     """One SendGrid personalization: the dealer in To, the RMA team BCC'd.
@@ -68,6 +71,7 @@ def send_adf(dealer, adf_xml, lead_id, lead=None):
     payload = {
         "personalizations": [_personalization(to_email)],
         "from": {"email": from_email, "name": from_name},
+        "reply_to": {"email": LEAD_REPLY_TO},
         "subject": subject,
         "content": [
             {
