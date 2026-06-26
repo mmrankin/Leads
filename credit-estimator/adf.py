@@ -45,11 +45,11 @@ def _product_meta(product_code):
     return source, name
 
 
-def _id_lineage(id_value, source, product_name, indent=4):
-    """Two <id> elements tracking this prospect's source history:
-    sequence=1 = the primary source, sequence=2 = this product."""
+def _id_lineage(id_value, source, subsource, indent=4):
+    """Two <id> elements tracking the lead's source lineage:
+    sequence=1 = the source, sequence=2 = the sub-source."""
     return (_el("id", id_value, {"sequence": "1", "source": source}, indent=indent)
-            + _el("id", id_value, {"sequence": "2", "source": product_name}, indent=indent))
+            + _el("id", id_value, {"sequence": "2", "source": subsource}, indent=indent))
 
 
 def _estimate_summary(est):
@@ -93,7 +93,7 @@ def build_adf(lead, dealer, estimate=None, request_dt=None, product_code=None,
     parts.append('<?xml version="1.0" encoding="UTF-8"?>\n')
     parts.append("<adf>\n")
     parts.append("  <prospect>\n")
-    parts.append(_id_lineage(id_value, source, product_name, indent=4))
+    parts.append(_id_lineage(id_value, source, subsource or product_name, indent=4))
     parts.append(_el("requestdate", requestdate, indent=4))
 
     # Vehicle (optional). Credit Pipeline leads are sell/trade intent.
