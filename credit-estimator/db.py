@@ -5,6 +5,8 @@ deal inputs + computed estimate). Uses the shared dlrpro_db helper (platform dir
 is on sys.path). Public function names/signatures unchanged from the SQLite version.
 """
 
+import logging
+
 import dlrpro_db as dlr
 from dlrpro_db import NOW
 
@@ -12,7 +14,7 @@ from dlrpro_db import NOW
 CONTACT_FIELDS = (
     "dealer_id", "first_name", "last_name", "email", "phone", "comments",
     "vehicle_year", "vehicle_make", "vehicle_model", "tc_agreed", "tc_agreed_at",
-    "email_verdict", "email_score", "source", "adf_xml",
+    "email_verdict", "email_score", "source", "subsource", "adf_xml",
     "email1_status", "email1_detail",
 )
 
@@ -28,8 +30,16 @@ ESTIMATE_FIELDS = (
 
 
 def init_db():
-    """No-op: `credit_leads` lives in dlrPro (created by migrate_to_dlrpro.py)."""
-    return
+    """`credit_leads` lives in dlrPro (created by migrate_to_dlrpro.py). Ensure
+    the `subsource` column exists (added after the initial migration)."""
+    try:
+        dlr.execute(
+            "IF COL_LENGTH('dbo.credit_leads','subsource') IS NULL "
+            "ALTER TABLE dbo.credit_leads ADD subsource NVARCHAR(255) NULL"
+        )
+    except Exception as exc:  # don't block startup if DDL can't run
+        logging.getLogger(__name__).warning(
+            "Could not ensure credit_leads.subsource column: %s", exc)
 
 
 def insert_lead(data):

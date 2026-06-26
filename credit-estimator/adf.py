@@ -43,9 +43,13 @@ def _estimate_summary(est):
     return "\n".join(lines)
 
 
-def build_adf(lead, dealer, estimate=None, request_dt=None):
+def build_adf(lead, dealer, estimate=None, request_dt=None,
+              source=None, subsource=None):
     """Return an ADF/XML string. If estimate is given, include the finance
-    block + the credit summary in the comments."""
+    block + the credit summary in the comments.
+
+    source/subsource set the lead source on the <provider> block: <name> is the
+    source (defaults to "Credit Estimator") and <service> the sub-source."""
     if request_dt is None:
         request_dt = datetime.now(timezone.utc)
     requestdate = request_dt.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -117,9 +121,10 @@ def build_adf(lead, dealer, estimate=None, request_dt=None):
     parts.append(_el("id", dealer.get("dealer_id"), {"source": "DealerID"}, indent=6))
     parts.append("    </vendor>\n")
 
-    # Provider = this product.
+    # Provider = the lead source (name) and sub-source (service).
     parts.append("    <provider>\n")
-    parts.append(_el("name", "Credit Estimator", {"part": "full"}, indent=6))
+    parts.append(_el("name", source or "Credit Estimator", {"part": "full"}, indent=6))
+    parts.append(_el("service", subsource, indent=6))
     parts.append("    </provider>\n")
 
     parts.append("  </prospect>\n")

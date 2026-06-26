@@ -101,7 +101,18 @@ def index():
         "admin.html",
         dealers=pdb.list_dealers(),
         states=US_STATES,
+        pipeline_flow=pdb.get_pipeline_flow(),
     )
+
+
+@app.route("/pipeline-flow", methods=["POST"])
+@require_login
+def pipeline_flow():
+    """Global on/off switch for automated Credit Pipeline lead delivery."""
+    enable = request.form.get("enable") == "1"
+    pdb.set_pipeline_flow(enable)
+    flash(f"Credit Pipeline lead flow turned {'ON' if enable else 'OFF'}.", "ok")
+    return redirect(url_for("index"))
 
 
 @app.route("/dealer", methods=["POST"])
@@ -128,12 +139,17 @@ def dealer(dealer_id):
     grants = pdb.list_grants(dealer_id)
     for g in grants:
         g["url"] = product_url(g["product_code"], dealer_id)
+    # "Send a test lead" link — only for dealers granted the Credit Estimator.
+    credit_base = product_url(pdb.PRODUCT_CREDIT_EST, dealer_id)
+    has_credit = any(g["product_code"] == pdb.PRODUCT_CREDIT_EST for g in grants)
+    credit_test_url = (credit_base + "/test-lead") if (has_credit and credit_base) else None
     return render_template(
         "dealer.html",
         dealer=d,
         states=US_STATES,
         products=pdb.list_products(),
         grants=grants,
+        credit_test_url=credit_test_url,
         vs=pdb.get_valuation_settings(dealer_id),
         recommended=pdb.RECOMMENDED,
         cond_fields=pdb.CONDITION_ADJ_FIELDS,
