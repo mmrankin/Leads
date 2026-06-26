@@ -39,7 +39,7 @@ PRODUCT_BASE_URLS = {
     pdb.PRODUCT_CREDIT_PIPELINE: _CREDIT_BASE,   # served by the same credit app
 }
 PRODUCT_PATHS = {pdb.PRODUCT_LEAD_FORM: "/d/", pdb.PRODUCT_TRADE_IN: "/t/",
-                 pdb.PRODUCT_CREDIT_EST: "/c/", pdb.PRODUCT_CREDIT_PIPELINE: "/c/"}
+                 pdb.PRODUCT_CREDIT_EST: "/c/", pdb.PRODUCT_CREDIT_PIPELINE: "/p/"}
 
 
 def product_url(product_code, dealer_id):

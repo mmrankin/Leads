@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Contact {{ dealer.dealer_name }}{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>Request Information</h1>
+    <p class="subtitle">Fill out the form below and {{ dealer.dealer_name }} will get back to you.</p>
+
+    {% if errors.contact %}
+    <div class="alert">{{ errors.contact }}</div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('pipeline_form', dealer_id=dealer.dealer_id) }}" novalidate>
+        {% if banner_override %}<input type="hidden" name="IMG" value="{{ banner_override }}">{% endif %}
+        <div class="row">
+            <div class="field">
+                <label for="first_name">First Name</label>
+                <input type="text" id="first_name" name="first_name" value="{{ form.first_name or '' }}">
+            </div>
+            <div class="field">
+                <label for="last_name">Last Name</label>
+                <input type="text" id="last_name" name="last_name" value="{{ form.last_name or '' }}">
+            </div>
+        </div>
+
+        <p class="hint"><span class="req">*</span> Provide an email address <strong>or</strong> a phone number (at least one).</p>
+        <div class="row">
+            <div class="field">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" value="{{ form.email or '' }}">
+                {% if errors.email %}<span class="error">{{ errors.email }}</span>{% endif %}
+            </div>
+            <div class="field">
+                <label for="phone">Phone</label>
+                <input type="tel" id="phone" name="phone" value="{{ form.phone or '' }}">
+            </div>
+        </div>
+
+        <fieldset class="vehicle">
+            <legend>Vehicle of Interest <span class="optional">(optional)</span></legend>
+            <div class="row">
+            {% if ymm %}
+                <div class="field">
+                    <label for="vehicle_year">Year</label>
+                    <select id="vehicle_year" name="vehicle_year" data-selected="{{ form.vehicle_year or '' }}">
+                        <option value="">Select year…</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="vehicle_make">Make</label>
+                    <select id="vehicle_make" name="vehicle_make" data-selected="{{ form.vehicle_make or '' }}" disabled>
+                        <option value="">Select make…</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="vehicle_model">Model</label>
+                    <select id="vehicle_model" name="vehicle_model" data-selected="{{ form.vehicle_model or '' }}" disabled>
+                        <option value="">Select model…</option>
+                    </select>
+                </div>
+            {% else %}
+                <div class="field">
+                    <label for="vehicle_year">Year</label>
+                    <input type="text" id="vehicle_year" name="vehicle_year" value="{{ form.vehicle_year or '' }}">
+                </div>
+                <div class="field">
+                    <label for="vehicle_make">Make</label>
+                    <input type="text" id="vehicle_make" name="vehicle_make" value="{{ form.vehicle_make or '' }}">
+                </div>
+                <div class="field">
+                    <label for="vehicle_model">Model</label>
+                    <input type="text" id="vehicle_model" name="vehicle_model" value="{{ form.vehicle_model or '' }}">
+                </div>
+            {% endif %}
+            </div>
+        </fieldset>
+
+        <div class="field">
+            <label for="comments">Comments</label>
+            <textarea id="comments" name="comments" rows="4">{{ form.comments or '' }}</textarea>
+        </div>
+
+        <label class="check">
+            <input type="checkbox" name="tc_agree" {{ 'checked' if form.tc_agreed else '' }}>
+            <span>I agree to the <a href="#" class="tc-open">terms &amp; conditions</a>.</span>
+        </label>
+        {% if errors.tc %}<span class="error">{{ errors.tc }}</span>{% endif %}
+
+        <button type="submit" class="btn">Submit</button>
+    </form>
+</div>
+{% include "_tc_modal.html" %}
+
+{% if ymm %}
+<script>
+(function () {
+    var yearEl = document.getElementById('vehicle_year');
+    var makeEl = document.getElementById('vehicle_make');
+    var modelEl = document.getElementById('vehicle_model');
+
+    function norm(x) { return String(x == null ? '' : x).trim().toLowerCase(); }
+
+    function fill(sel, items, placeholder, keep) {
+        sel.innerHTML = '';
+        var opt = document.createElement('option');
+        opt.value = ''; opt.textContent = placeholder;
+        sel.appendChild(opt);
+        items.forEach(function (v) {
+            var o = document.createElement('option');
+            o.value = v; o.textContent = v;
+            if (keep && norm(keep) === norm(v)) o.selected = true;
+            sel.appendChild(o);
+        });
+    }
+
+    function load(url) {
+        return fetch(url).then(function (r) { return r.ok ? r.json() : []; })
+                         .catch(function () { return []; });
+    }
+
+    function loadMakes(year, keepMake, keepModel) {
+        makeEl.disabled = true; modelEl.disabled = true;
+        fill(makeEl, [], 'Select make…'); fill(modelEl, [], 'Select model…');
+        if (!year) return;
+        load('/api/vehicle/makes?year=' + encodeURIComponent(year)).then(function (makes) {
+            fill(makeEl, makes, 'Select make…', keepMake);
+            makeEl.disabled = false;
+            if (keepMake) loadModels(year, keepMake, keepModel);
+        });
+    }
+
+    function loadModels(year, make, keepModel) {
+        modelEl.disabled = true;
+        fill(modelEl, [], 'Select model…');
+        if (!year || !make) return;
+        load('/api/vehicle/models?year=' + encodeURIComponent(year) +
+             '&make=' + encodeURIComponent(make)).then(function (models) {
+            fill(modelEl, models, 'Select model…', keepModel);
+            modelEl.disabled = false;
+        });
+    }
+
+    yearEl.addEventListener('change', function () { loadMakes(yearEl.value); });
+    makeEl.addEventListener('change', function () { loadModels(yearEl.value, makeEl.value); });
+
+    // Initial load (restores prior selections after a validation error).
+    var keepYear = yearEl.getAttribute('data-selected');
+    var keepMake = makeEl.getAttribute('data-selected');
+    var keepModel = modelEl.getAttribute('data-selected');
+    load('/api/vehicle/years').then(function (years) {
+        fill(yearEl, years, 'Select year…', keepYear);
+        if (keepYear) loadMakes(keepYear, keepMake, keepModel);
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

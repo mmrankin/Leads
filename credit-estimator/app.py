@@ -83,6 +83,16 @@ def _require_active_dealer(dealer_id):
     return dealer
 
 
+def _require_pipeline_dealer(dealer_id):
+    """Gate for the /p/ Credit Pipeline form — requires the CREDIT_PIPELINE grant."""
+    dealer = pdb.get_dealer(dealer_id)
+    if not dealer:
+        abort(404, description="Unknown dealer.")
+    if not pdb.dealer_has_product(dealer_id, pdb.PRODUCT_CREDIT_PIPELINE):
+        abort(403)
+    return dealer
+
+
 def _banner_override():
     """Optional per-link banner image via ?IMG=<url>; http(s) only."""
     img = (request.values.get("IMG") or request.values.get("img") or "").strip()
@@ -301,6 +311,91 @@ def results(dealer_id):
     return render_template("results.html", dealer=dealer, est=result, step=4)
 
 
+# ----- Credit Pipeline lead form (a duplicate of the Dealer Lead Form) -----
+#
+# The public Credit Pipeline capture page at /p/<dealer_id>: name/email/phone,
+# Year/Make/Model, comments, T&C — identical to the Dealer Lead Form, but served
+# by the credit app and stamped with the Credit Pipeline product's ADF source
+# lineage. (The /c/ routes remain the multi-step Credit Estimator flow.)
+
+@app.route("/p/<dealer_id>", methods=["GET", "POST"])
+def pipeline_form(dealer_id):
+    dealer = _require_pipeline_dealer(dealer_id)
+
+    if request.method == "GET":
+        # Pre-fill name/email/phone from the shared cookie; allow ?year=&make=&model=.
+        prefill = dict(contact_cookie.read(request))
+        for short, full in (
+            ("year", "vehicle_year"),
+            ("make", "vehicle_make"),
+            ("model", "vehicle_model"),
+        ):
+            val = (request.args.get(short) or request.args.get(full) or "").strip()
+            if val:
+                prefill[full] = val
+        return render_template(
+            "pipeline_form.html", dealer=dealer, errors={}, form=prefill,
+            ymm=vin_db.is_enabled(), banner_override=_banner_override(),
+        )
+
+    form = {k: (request.form.get(k) or "").strip() for k in (
+        "first_name", "last_name", "email", "phone", "comments",
+        "vehicle_year", "vehicle_make", "vehicle_model",
+    )}
+    tc = request.form.get("tc_agree") == "on"
+
+    # Validation: email OR phone is required; T&C must be agreed.
+    errors = {}
+    if not form["email"] and not form["phone"]:
+        errors["contact"] = "Please provide an email address or a phone number."
+    if form["email"] and "@" not in form["email"]:
+        errors["email"] = "Please enter a valid email address."
+    if not tc:
+        errors["tc"] = "Please agree to the terms and conditions."
+
+    validation = {"verdict": None, "score": None}
+    if not errors and form["email"]:
+        validation = validate_email(form["email"])
+        if not validation["accept"]:
+            errors["email"] = (
+                "That email address doesn't appear to be deliverable. "
+                "Please check it, or leave it blank and provide a phone number."
+            )
+
+    if errors:
+        return render_template(
+            "pipeline_form.html", dealer=dealer, errors=errors, form=form,
+            ymm=vin_db.is_enabled(), banner_override=_banner_override(),
+        ), 400
+
+    # Persist first so the lead id is the ADF source-lineage id, then build +
+    # attach the ADF (Credit Pipeline product) and deliver it.
+    lead = dict(form)
+    lead["dealer_id"] = dealer_id
+    lead["source"] = request.headers.get("Referer") or request.url
+    lead["tc_agreed"] = 1
+    lead["tc_agreed_at"] = datetime.utcnow().isoformat()
+    lead["email_verdict"] = validation.get("verdict")
+    lead["email_score"] = validation.get("score")
+    lead["adf_xml"] = None
+    lead["email1_status"], lead["email1_detail"] = "pending", None
+    lead_id = db.insert_lead(lead)
+
+    lead["id"] = lead_id
+    adf_xml = build_adf(lead, dealer, estimate=None, product_code=PRODUCT_CODE)
+    db.update_adf(lead_id, adf_xml)
+    status, detail = send_adf(dealer, adf_xml, lead_id=lead_id, lead=lead)
+    db.set_email_status(lead_id, 1, status, detail)
+
+    return redirect(url_for("pipeline_thanks", dealer_id=dealer_id))
+
+
+@app.route("/p/<dealer_id>/thanks")
+def pipeline_thanks(dealer_id):
+    dealer = _require_pipeline_dealer(dealer_id)
+    return render_template("pipeline_thanks.html", dealer=dealer)
+
+
 # ----- test lead (a copy of the Dealer Lead Form capture page) -----
 #
 # A staff tool to fire a real ADF/XML lead at the dealer so they can confirm
@@ -311,7 +406,7 @@ def results(dealer_id):
 SUBSOURCES = ("Trigger Lead", "Auto Inquiry (combined)")
 
 
-@app.route("/c/<dealer_id>/test-lead", methods=["GET", "POST"])
+@app.route("/p/<dealer_id>/test-lead", methods=["GET", "POST"])
 def test_lead(dealer_id):
     dealer = _require_active_dealer(dealer_id)
 
