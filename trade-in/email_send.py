@@ -106,17 +106,14 @@ def send_adf(dealer, adf_xml, lead_id, lead=None, updated=False):
         subject += f" - {name}"
     subject += f" - {dealer.get('dealer_name', '')}"
 
-    attachment = base64.b64encode(adf_xml.encode("utf-8")).decode("ascii")
+    # The ADF/XML rides in the email body; no separate attachment is needed.
     payload = {
         "personalizations": [_personalization(to_email)],
         "from": {"email": from_email, "name": from_name},
         "subject": subject.strip(),
         "content": [{"type": "text/plain",
-                     "value": ("A trade-in lead was submitted. ADF/XML attached and below.\n\n"
+                     "value": ("A trade-in lead was submitted. ADF/XML included below.\n\n"
                                + adf_xml)}],
-        "attachments": [{"content": attachment, "type": "application/xml",
-                         "filename": f"trade-{lead_id}-{tag}.adf.xml",
-                         "disposition": "attachment"}],
     }
     try:
         resp = requests.post(

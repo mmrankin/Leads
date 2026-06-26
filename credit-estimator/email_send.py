@@ -7,7 +7,6 @@ Configuration (environment variables):
     LEAD_FROM_NAME     Optional sender display name.
 """
 
-import base64
 import os
 
 import requests
@@ -65,7 +64,7 @@ def send_adf(dealer, adf_xml, lead_id, lead=None):
         ).strip()
     subject = f"New Lead{(' - ' + name) if name else ''} - {dealer.get('dealer_name', '')}".strip()
 
-    attachment = base64.b64encode(adf_xml.encode("utf-8")).decode("ascii")
+    # The ADF/XML rides in the email body; no separate attachment is needed.
     payload = {
         "personalizations": [_personalization(to_email)],
         "from": {"email": from_email, "name": from_name},
@@ -74,17 +73,9 @@ def send_adf(dealer, adf_xml, lead_id, lead=None):
             {
                 "type": "text/plain",
                 "value": (
-                    "A new lead was submitted. The ADF/XML payload is attached "
-                    "and included below.\n\n" + adf_xml
+                    "A new lead was submitted. The ADF/XML payload is included "
+                    "below.\n\n" + adf_xml
                 ),
-            }
-        ],
-        "attachments": [
-            {
-                "content": attachment,
-                "type": "application/xml",
-                "filename": f"lead-{lead_id}.adf.xml",
-                "disposition": "attachment",
             }
         ],
     }
