@@ -14,21 +14,26 @@ import requests
 SENDGRID_URL = "https://api.sendgrid.com/v3/mail/send"
 OUTBOX_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outbox")
 
-# Addresses BCC'd on every outbound ADF/XML lead email (env override: ADF_BCC, comma-separated).
+# BCC'd on Credit Pipeline lead emails (env override: ADF_BCC, comma-separated).
 ADF_BCC = [e.strip() for e in os.environ.get(
     "ADF_BCC",
     "justinstull@rmadataplus.com,robbazaren@rmadataplus.com,mark@rmadataplus.com",
 ).split(",") if e.strip()]
 
+# BCC'd on Credit Estimator (/c/) lead emails — this app serves both products
+# (env override: CREDIT_EST_BCC). Estimator drops the RMA-team BCC.
+ESTIMATOR_BCC = [e.strip() for e in os.environ.get(
+    "CREDIT_EST_BCC", "mark@panafax.ai").split(",") if e.strip()]
+
 # Reply-To on every outbound lead email (env override: LEAD_REPLY_TO).
 LEAD_REPLY_TO = os.environ.get("LEAD_REPLY_TO", "noreply@rmadataplus.com")
 
 
-def _personalization(to_email):
-    """One SendGrid personalization: the dealer in To, the RMA team BCC'd.
+def _personalization(to_email, bcc_list):
+    """One SendGrid personalization: the dealer in To, the given list BCC'd.
     Drops any BCC that duplicates the To address (SendGrid rejects duplicates)."""
     p = {"to": [{"email": to_email}]}
-    bcc = [{"email": e} for e in ADF_BCC if e.lower() != to_email.lower()]
+    bcc = [{"email": e} for e in bcc_list if e.lower() != to_email.lower()]
     if bcc:
         p["bcc"] = bcc
     return p
@@ -42,11 +47,13 @@ def _save_to_outbox(dealer, adf_xml, lead_id):
     return path
 
 
-def send_adf(dealer, adf_xml, lead_id, lead=None):
-    """Send the ADF/XML to the dealer's leadEmailAddress.
+def send_adf(dealer, adf_xml, lead_id, lead=None, bcc=None):
+    """Send the ADF/XML to the dealer's leadEmailAddress. bcc overrides the BCC
+    list (defaults to the Credit Pipeline ADF_BCC).
 
     Returns (status, detail) where status is 'sent', 'failed', or 'pending'.
     """
+    bcc_list = ADF_BCC if bcc is None else bcc
     to_email = (dealer.get("lead_email_address") or "").strip()
     if not to_email:
         return "failed", "Dealer has no leadEmailAddress configured."
@@ -69,7 +76,7 @@ def send_adf(dealer, adf_xml, lead_id, lead=None):
 
     # The ADF/XML rides in the email body; no separate attachment is needed.
     payload = {
-        "personalizations": [_personalization(to_email)],
+        "personalizations": [_personalization(to_email, bcc_list)],
         "from": {"email": from_email, "name": from_name},
         "reply_to": {"email": LEAD_REPLY_TO},
         "subject": subject,

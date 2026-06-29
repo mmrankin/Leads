@@ -44,7 +44,7 @@ import db
 import credit
 import vin_db
 from adf import build_adf
-from email_send import send_adf
+from email_send import send_adf, ESTIMATOR_BCC
 from email_validate import validate_email
 
 # This app serves the Credit Pipeline product (its ADF identity/source lineage),
@@ -171,7 +171,8 @@ def lead_form(dealer_id):
     lead["id"] = lead_id
     adf_xml = build_adf(lead, dealer, estimate=None, product_code=PRODUCT_CODE)
     db.update_adf(lead_id, adf_xml)
-    status, detail = send_adf(dealer, adf_xml, lead_id=lead_id, lead=lead)
+    status, detail = send_adf(dealer, adf_xml, lead_id=lead_id, lead=lead,
+                              bcc=ESTIMATOR_BCC)
     db.set_email_status(lead_id, 1, status, detail)
 
     # Carry the contact/vehicle context into page 2 via the session.
@@ -253,7 +254,8 @@ def deal(dealer_id):
         "max_vehicle_price": aff.get("max_vehicle_price"),
         "approval": result["approval"], "adf_xml": full,
     })
-    status, detail = send_adf(dealer, full, lead_id=data["lead_id"], lead=lead)
+    status, detail = send_adf(dealer, full, lead_id=data["lead_id"], lead=lead,
+                              bcc=ESTIMATOR_BCC)
     db.set_email_status(data["lead_id"], 2, status, detail)
 
     session[_session_key(dealer_id)]["estimate"] = result
@@ -284,7 +286,7 @@ def trade_in_handoff(dealer_id):
         "comments": "Customer requested a trade-in appraisal (from the Credit Estimator).",
     }
     adf_xml = build_adf(lead, dealer, estimate=None, product_code=PRODUCT_CODE)
-    send_adf(dealer, adf_xml, lead_id=data["lead_id"], lead=lead)
+    send_adf(dealer, adf_xml, lead_id=data["lead_id"], lead=lead, bcc=ESTIMATOR_BCC)
 
     # Hand the contact off to the trade-in app. These are first-party apps on the
     # same host; the contact rides in the query string so the trade-in widget can
