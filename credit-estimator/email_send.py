@@ -76,10 +76,7 @@ def send_adf(dealer, adf_xml, lead_id, lead=None):
         "content": [
             {
                 "type": "text/plain",
-                "value": (
-                    "A new lead was submitted. The ADF/XML payload is included "
-                    "below.\n\n" + adf_xml
-                ),
+                "value": adf_xml,
             }
         ],
     }
