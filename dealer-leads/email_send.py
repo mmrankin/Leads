@@ -17,7 +17,7 @@ OUTBOX_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outbox")
 # Addresses BCC'd on every outbound ADF/XML lead email (env override: ADF_BCC, comma-separated).
 ADF_BCC = [e.strip() for e in os.environ.get(
     "ADF_BCC",
-    "mark@rmadataplus.com",
+    "mark@panafax.ai",
 ).split(",") if e.strip()]
 
 # Reply-To on every outbound lead email (env override: LEAD_REPLY_TO).
