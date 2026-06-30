@@ -3,21 +3,26 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Admin Login</title>
+    <title>Sign in · DLRPro Lead Platform</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <main class="container">
-        <div class="card card--center">
-            <h1>Platform Admin</h1>
+        <div class="brand" style="text-align:center;font-size:30px;margin-bottom:20px">
+            DLR<span class="sub">Pro</span>
+            <span class="tag">Dealer Lead Platform · Admin</span>
+        </div>
+        <div class="card">
+            <h1 style="text-align:center">Sign in</h1>
+            <p class="subtitle" style="text-align:center">Enter the admin password to continue.</p>
             {% if error %}<div class="alert">Incorrect password.</div>{% endif %}
             <form method="post" action="{{ url_for('login') }}">
                 <input type="hidden" name="next" value="{{ next or '/' }}">
                 <div class="field">
                     <label>Password</label>
-                    <input type="password" name="password" autofocus>
+                    <input type="password" name="password" autofocus autocomplete="current-password">
                 </div>
-                <button type="submit" class="btn">Sign in</button>
+                <button type="submit" class="btn" style="width:100%;justify-content:center">Sign in</button>
             </form>
         </div>
     </main>
