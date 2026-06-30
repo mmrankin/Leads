@@ -96,6 +96,19 @@ def delete_crm_type(crm_id):
     dlr.execute("DELETE FROM crm_types WHERE id=%(i)s", {"i": crm_id})
 
 
+def crm_name_for(dealer):
+    """CRM system name for a dealer dict (resolves crm_type_id), or None.
+    Never raises — returns None on any error (used during ADF generation)."""
+    try:
+        cid = (dealer or {}).get("crm_type_id")
+        if not cid:
+            return None
+        row = get_crm_type(cid)
+        return row["name"] if row else None
+    except Exception:
+        return None
+
+
 # ----- dealers -----
 
 def get_dealer(dealer_id):
