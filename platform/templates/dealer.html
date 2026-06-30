@@ -34,6 +34,13 @@
             <label>Banner Image URL <span class="optional">(optional)</span></label>
             <input name="banner_url" value="{{ dealer.banner_url or '' }}" placeholder="https://...">
         </div>
+        <div class="field">
+            <label>CRM Type</label>
+            <select name="crm_type_id">
+                <option value="">— none —</option>
+                {% for c in crm_types %}<option value="{{ c.id }}" {{ 'selected' if dealer.crm_type_id == c.id else '' }}>{{ c.name }}</option>{% endfor %}
+            </select>
+        </div>
         <button type="submit" class="btn">Save Details</button>
     </form>
 </div>

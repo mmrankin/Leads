@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>CRM Types</h1>
+
+<div class="card">
+    <h2>Add CRM Type</h2>
+    <p class="subtitle">The CRM systems a dealer can be assigned on the dealer page.</p>
+    <form method="post" action="{{ url_for('save_crm_type') }}" style="display:flex;gap:8px;align-items:center">
+        <input name="name" placeholder="e.g. DealerSocket" style="min-width:18rem" required>
+        <button type="submit" class="btn">Add</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>CRM Systems ({{ crm_types|length }})</h2>
+    {% if crm_types %}
+    <table class="tbl">
+        <thead><tr><th>Name</th><th></th></tr></thead>
+        <tbody>
+        {% for c in crm_types %}
+        <tr>
+            <td>
+                <form method="post" action="{{ url_for('save_crm_type') }}" style="display:flex;gap:8px;align-items:center">
+                    <input type="hidden" name="id" value="{{ c.id }}">
+                    <input name="name" value="{{ c.name }}" style="min-width:18rem">
+                    <button type="submit" class="btn">Save</button>
+                </form>
+            </td>
+            <td style="text-align:right">
+                <form method="post" action="{{ url_for('remove_crm_type', crm_id=c.id) }}" onsubmit="return confirm('Remove this CRM type?')">
+                    <button class="link-btn" type="submit">remove</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="subtitle">No CRM types yet. Add one above.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -57,6 +57,13 @@
             <label>Banner Image URL <span class="optional">(optional)</span></label>
             <input name="banner_url" placeholder="https://...">
         </div>
+        <div class="field">
+            <label>CRM Type</label>
+            <select name="crm_type_id">
+                <option value="">— none —</option>
+                {% for c in crm_types %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+            </select>
+        </div>
         <button type="submit" class="btn">Add Dealer</button>
     </form>
 </div>

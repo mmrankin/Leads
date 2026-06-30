@@ -40,6 +40,7 @@ def init_db():
     """Ensure the default products exist (tables themselves are created by the
     one-time migrate_to_dlrpro.py). Idempotent."""
     _ensure_pipeline_tables()
+    _ensure_crm_tables()
     # Self-healing: the `source` column was added after the initial migration.
     dlr.execute("IF COL_LENGTH('products', 'source') IS NULL "
                 "ALTER TABLE products ADD source NVARCHAR(200) NULL")
@@ -55,6 +56,46 @@ def init_db():
                         "VALUES (%(c)s, %(n)s, %(d)s, %(s)s)", p)
 
 
+# ----- CRM types -----
+#
+# Master list of dealer CRM systems; a dealer references one via dealers.crm_type_id.
+
+def _ensure_crm_tables():
+    """Create the crm_types table + the dealers.crm_type_id column if missing."""
+    dlr.execute(
+        "IF OBJECT_ID(N'dbo.crm_types','U') IS NULL "
+        "CREATE TABLE dbo.crm_types ("
+        " id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,"
+        " name NVARCHAR(120) NOT NULL,"
+        " created_at NVARCHAR(32) NULL,"
+        " CONSTRAINT UQ_crm_types_name UNIQUE (name))")
+    dlr.execute(
+        "IF COL_LENGTH('dbo.dealers','crm_type_id') IS NULL "
+        "ALTER TABLE dbo.dealers ADD crm_type_id INT NULL")
+
+
+def list_crm_types():
+    return dlr.query("SELECT * FROM crm_types ORDER BY name")
+
+
+def get_crm_type(crm_id):
+    return dlr.one("SELECT * FROM crm_types WHERE id=%(i)s", {"i": crm_id})
+
+
+def add_crm_type(name):
+    dlr.execute(f"INSERT INTO crm_types (name, created_at) VALUES (%(n)s, {NOW})",
+                {"n": name})
+
+
+def update_crm_type(crm_id, name):
+    dlr.execute("UPDATE crm_types SET name=%(n)s WHERE id=%(i)s",
+                {"n": name, "i": crm_id})
+
+
+def delete_crm_type(crm_id):
+    dlr.execute("DELETE FROM crm_types WHERE id=%(i)s", {"i": crm_id})
+
+
 # ----- dealers -----
 
 def get_dealer(dealer_id):
@@ -67,20 +108,20 @@ def list_dealers():
 
 def upsert_dealer(data):
     fields = ("dealer_id", "dealer_name", "address", "city", "state",
-              "zip", "phone", "lead_email_address", "banner_url")
-    v = {k: (data.get(k) or None) for k in fields}
+              "zip", "phone", "lead_email_address", "banner_url", "crm_type_id")
+    v = {k: (data.get(k) if data.get(k) not in ("", None) else None) for k in fields}
     if dlr.one("SELECT 1 AS x FROM dealers WHERE dealer_id=%(dealer_id)s", v):
         dlr.execute(
             "UPDATE dealers SET dealer_name=%(dealer_name)s, address=%(address)s, "
             "city=%(city)s, state=%(state)s, zip=%(zip)s, phone=%(phone)s, "
             "lead_email_address=%(lead_email_address)s, banner_url=%(banner_url)s, "
-            f"updated_at={NOW} WHERE dealer_id=%(dealer_id)s", v)
+            f"crm_type_id=%(crm_type_id)s, updated_at={NOW} WHERE dealer_id=%(dealer_id)s", v)
     else:
         dlr.execute(
             "INSERT INTO dealers (dealer_id, dealer_name, address, city, state, zip, "
-            "phone, lead_email_address, banner_url) VALUES (%(dealer_id)s, "
+            "phone, lead_email_address, banner_url, crm_type_id) VALUES (%(dealer_id)s, "
             "%(dealer_name)s, %(address)s, %(city)s, %(state)s, %(zip)s, %(phone)s, "
-            "%(lead_email_address)s, %(banner_url)s)", v)
+            "%(lead_email_address)s, %(banner_url)s, %(crm_type_id)s)", v)
 
 
 # ----- products -----

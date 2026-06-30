@@ -104,6 +104,7 @@ def index():
         dealers=pdb.list_dealers(),
         states=US_STATES,
         pipeline_flow=pdb.get_pipeline_flow(),
+        crm_types=pdb.list_crm_types(),
     )
 
 
@@ -121,6 +122,40 @@ def pipeline_flow():
 @require_login
 def products():
     return render_template("products.html", products=pdb.list_products())
+
+
+@app.route("/crm-types")
+@require_login
+def crm_types():
+    return render_template("crm_types.html", crm_types=pdb.list_crm_types())
+
+
+@app.route("/crm-type", methods=["POST"])
+@require_login
+def save_crm_type():
+    crm_id = (request.form.get("id") or "").strip()
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("CRM name is required.", "error")
+    else:
+        try:
+            if crm_id:
+                pdb.update_crm_type(int(crm_id), name)
+                flash("Updated CRM type.", "ok")
+            else:
+                pdb.add_crm_type(name)
+                flash(f'Added CRM type "{name}".', "ok")
+        except Exception:
+            flash(f'Could not save "{name}" — that CRM name may already exist.', "error")
+    return redirect(url_for("crm_types"))
+
+
+@app.route("/crm-type/<int:crm_id>/delete", methods=["POST"])
+@require_login
+def remove_crm_type(crm_id):
+    pdb.delete_crm_type(crm_id)
+    flash("Removed CRM type.", "ok")
+    return redirect(url_for("crm_types"))
 
 
 @app.route("/product/source", methods=["POST"])
@@ -143,6 +178,8 @@ def save_dealer():
         "dealer_id", "dealer_name", "address", "city", "state", "zip",
         "phone", "lead_email_address", "banner_url",
     )}
+    crm = (request.form.get("crm_type_id") or "").strip()
+    data["crm_type_id"] = int(crm) if crm else None
     if not (data["dealer_id"] and data["dealer_name"] and data["lead_email_address"]):
         flash("DealerID, Dealer Name and Lead Email Address are required.", "error")
         return redirect(url_for("index"))
@@ -170,6 +207,7 @@ def dealer(dealer_id):
         dealer=d,
         states=US_STATES,
         products=pdb.list_products(),
+        crm_types=pdb.list_crm_types(),
         grants=grants,
         credit_test_url=credit_test_url,
         vs=pdb.get_valuation_settings(dealer_id),
