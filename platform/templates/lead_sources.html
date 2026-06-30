@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Lead Sources</h1>
+
+<div class="card">
+    <h2>Add Lead Source</h2>
+    <p class="subtitle">
+        A dealer's lead source is the primary source stamped on every outbound
+        ADF/XML: <code>&lt;id sequence="1" source="…"&gt;</code>. Dealers with no
+        selection default to <strong>{{ default_source }}</strong>.
+    </p>
+    <form method="post" action="{{ url_for('save_lead_source') }}" style="display:flex;gap:8px;align-items:center">
+        <input name="name" placeholder="e.g. G4 Media" style="min-width:18rem" required>
+        <button type="submit" class="btn">Add</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Lead Sources ({{ lead_sources|length }})</h2>
+    {% if lead_sources %}
+    <table class="tbl">
+        <thead><tr><th>Name</th><th></th></tr></thead>
+        <tbody>
+        {% for s in lead_sources %}
+        <tr>
+            <td>
+                <form method="post" action="{{ url_for('save_lead_source') }}" style="display:flex;gap:8px;align-items:center">
+                    <input type="hidden" name="id" value="{{ s.id }}">
+                    <input name="name" value="{{ s.name }}" style="min-width:18rem">
+                    <button type="submit" class="btn">Save</button>
+                    {% if s.name == default_source %}<span class="muted">default</span>{% endif %}
+                </form>
+            </td>
+            <td style="text-align:right">
+                <form method="post" action="{{ url_for('remove_lead_source', source_id=s.id) }}" onsubmit="return confirm('Remove this lead source?')">
+                    <button class="link-btn" type="submit">remove</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="subtitle">No lead sources yet. Add one above.</p>
+    {% endif %}
+</div>
+{% endblock %}

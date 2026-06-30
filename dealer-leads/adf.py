@@ -62,7 +62,10 @@ def build_adf(lead, dealer, request_dt=None, product_code=None):
     if requestdate and requestdate[-5] in "+-":
         requestdate = requestdate[:-2] + ":" + requestdate[-2:]
 
-    source, product_name = _product_meta(product_code)
+    _, product_name = _product_meta(product_code)
+    # Primary (sequence 1) ADF source = the dealer's lead source (default
+    # "Credit Pipeline"); sequence 2 = the product name.
+    lead_source = (_pdb.lead_source_for(dealer) if _pdb else None) or "Credit Pipeline"
     id_value = lead.get("serial") or lead.get("id") or lead.get("lead_id")
 
     parts = []
@@ -77,7 +80,7 @@ def build_adf(lead, dealer, request_dt=None, product_code=None):
         parts.append('<?xml version="1.0" encoding="UTF-8"?>\n')
     parts.append("<adf>\n")
     parts.append("  <prospect>\n")
-    parts.append(_id_lineage(id_value, source, product_name, indent=4))
+    parts.append(_id_lineage(id_value, lead_source, product_name, indent=4))
     parts.append(_el("requestdate", requestdate, indent=4))
 
     # Vehicle of interest (optional).

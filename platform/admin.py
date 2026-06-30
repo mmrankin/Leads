@@ -105,6 +105,8 @@ def index():
         states=US_STATES,
         pipeline_flow=pdb.get_pipeline_flow(),
         crm_types=pdb.list_crm_types(),
+        lead_sources=pdb.list_lead_sources(),
+        default_source=pdb.DEFAULT_LEAD_SOURCE,
     )
 
 
@@ -158,6 +160,41 @@ def remove_crm_type(crm_id):
     return redirect(url_for("crm_types"))
 
 
+@app.route("/lead-sources")
+@require_login
+def lead_sources():
+    return render_template("lead_sources.html", lead_sources=pdb.list_lead_sources(),
+                           default_source=pdb.DEFAULT_LEAD_SOURCE)
+
+
+@app.route("/lead-source", methods=["POST"])
+@require_login
+def save_lead_source():
+    source_id = (request.form.get("id") or "").strip()
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("Lead source name is required.", "error")
+    else:
+        try:
+            if source_id:
+                pdb.update_lead_source(int(source_id), name)
+                flash("Updated lead source.", "ok")
+            else:
+                pdb.add_lead_source(name)
+                flash(f'Added lead source "{name}".', "ok")
+        except Exception:
+            flash(f'Could not save "{name}" — that name may already exist.', "error")
+    return redirect(url_for("lead_sources"))
+
+
+@app.route("/lead-source/<int:source_id>/delete", methods=["POST"])
+@require_login
+def remove_lead_source(source_id):
+    pdb.delete_lead_source(source_id)
+    flash("Removed lead source.", "ok")
+    return redirect(url_for("lead_sources"))
+
+
 @app.route("/product/source", methods=["POST"])
 @require_login
 def save_product_source():
@@ -180,6 +217,8 @@ def save_dealer():
     )}
     crm = (request.form.get("crm_type_id") or "").strip()
     data["crm_type_id"] = int(crm) if crm else None
+    src = (request.form.get("lead_source_id") or "").strip()
+    data["lead_source_id"] = int(src) if src else None
     if not (data["dealer_id"] and data["dealer_name"] and data["lead_email_address"]):
         flash("DealerID, Dealer Name and Lead Email Address are required.", "error")
         return redirect(url_for("index"))
@@ -208,6 +247,8 @@ def dealer(dealer_id):
         states=US_STATES,
         products=pdb.list_products(),
         crm_types=pdb.list_crm_types(),
+        lead_sources=pdb.list_lead_sources(),
+        default_source=pdb.DEFAULT_LEAD_SOURCE,
         grants=grants,
         credit_test_url=credit_test_url,
         vs=pdb.get_valuation_settings(dealer_id),

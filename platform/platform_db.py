@@ -41,6 +41,7 @@ def init_db():
     one-time migrate_to_dlrpro.py). Idempotent."""
     _ensure_pipeline_tables()
     _ensure_crm_tables()
+    _ensure_leadsource_tables()
     # Self-healing: the `source` column was added after the initial migration.
     dlr.execute("IF COL_LENGTH('products', 'source') IS NULL "
                 "ALTER TABLE products ADD source NVARCHAR(200) NULL")
@@ -109,6 +110,72 @@ def crm_name_for(dealer):
         return None
 
 
+# ----- lead sources -----
+#
+# Master list of lead sources; a dealer references one via dealers.lead_source_id.
+# The dealer's lead source is the primary (sequence 1) ADF <id> source. Dealers
+# with no selection fall back to DEFAULT_LEAD_SOURCE.
+
+DEFAULT_LEAD_SOURCE = "Credit Pipeline"
+DEFAULT_LEAD_SOURCES = ("Credit Pipeline", "G4 Media")
+
+
+def _ensure_leadsource_tables():
+    """Create lead_sources + the dealers.lead_source_id column, and seed the
+    default sources. Idempotent."""
+    dlr.execute(
+        "IF OBJECT_ID(N'dbo.lead_sources','U') IS NULL "
+        "CREATE TABLE dbo.lead_sources ("
+        " id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,"
+        " name NVARCHAR(120) NOT NULL,"
+        " created_at NVARCHAR(32) NULL,"
+        " CONSTRAINT UQ_lead_sources_name UNIQUE (name))")
+    dlr.execute(
+        "IF COL_LENGTH('dbo.dealers','lead_source_id') IS NULL "
+        "ALTER TABLE dbo.dealers ADD lead_source_id INT NULL")
+    for name in DEFAULT_LEAD_SOURCES:
+        dlr.execute(
+            "IF NOT EXISTS (SELECT 1 FROM lead_sources WHERE name=%(n)s) "
+            f"INSERT INTO lead_sources (name, created_at) VALUES (%(n)s, {NOW})",
+            {"n": name})
+
+
+def list_lead_sources():
+    return dlr.query("SELECT * FROM lead_sources ORDER BY name")
+
+
+def get_lead_source(source_id):
+    return dlr.one("SELECT * FROM lead_sources WHERE id=%(i)s", {"i": source_id})
+
+
+def add_lead_source(name):
+    dlr.execute(f"INSERT INTO lead_sources (name, created_at) VALUES (%(n)s, {NOW})",
+                {"n": name})
+
+
+def update_lead_source(source_id, name):
+    dlr.execute("UPDATE lead_sources SET name=%(n)s WHERE id=%(i)s",
+                {"n": name, "i": source_id})
+
+
+def delete_lead_source(source_id):
+    dlr.execute("DELETE FROM lead_sources WHERE id=%(i)s", {"i": source_id})
+
+
+def lead_source_for(dealer):
+    """Primary ADF source for a dealer (resolves lead_source_id), defaulting to
+    Credit Pipeline. Never raises (used during ADF generation)."""
+    try:
+        sid = (dealer or {}).get("lead_source_id")
+        if sid:
+            row = get_lead_source(sid)
+            if row and row.get("name"):
+                return row["name"]
+    except Exception:
+        pass
+    return DEFAULT_LEAD_SOURCE
+
+
 # ----- dealers -----
 
 def get_dealer(dealer_id):
@@ -121,20 +188,23 @@ def list_dealers():
 
 def upsert_dealer(data):
     fields = ("dealer_id", "dealer_name", "address", "city", "state",
-              "zip", "phone", "lead_email_address", "banner_url", "crm_type_id")
+              "zip", "phone", "lead_email_address", "banner_url",
+              "crm_type_id", "lead_source_id")
     v = {k: (data.get(k) if data.get(k) not in ("", None) else None) for k in fields}
     if dlr.one("SELECT 1 AS x FROM dealers WHERE dealer_id=%(dealer_id)s", v):
         dlr.execute(
             "UPDATE dealers SET dealer_name=%(dealer_name)s, address=%(address)s, "
             "city=%(city)s, state=%(state)s, zip=%(zip)s, phone=%(phone)s, "
             "lead_email_address=%(lead_email_address)s, banner_url=%(banner_url)s, "
-            f"crm_type_id=%(crm_type_id)s, updated_at={NOW} WHERE dealer_id=%(dealer_id)s", v)
+            "crm_type_id=%(crm_type_id)s, lead_source_id=%(lead_source_id)s, "
+            f"updated_at={NOW} WHERE dealer_id=%(dealer_id)s", v)
     else:
         dlr.execute(
             "INSERT INTO dealers (dealer_id, dealer_name, address, city, state, zip, "
-            "phone, lead_email_address, banner_url, crm_type_id) VALUES (%(dealer_id)s, "
-            "%(dealer_name)s, %(address)s, %(city)s, %(state)s, %(zip)s, %(phone)s, "
-            "%(lead_email_address)s, %(banner_url)s, %(crm_type_id)s)", v)
+            "phone, lead_email_address, banner_url, crm_type_id, lead_source_id) "
+            "VALUES (%(dealer_id)s, %(dealer_name)s, %(address)s, %(city)s, %(state)s, "
+            "%(zip)s, %(phone)s, %(lead_email_address)s, %(banner_url)s, "
+            "%(crm_type_id)s, %(lead_source_id)s)", v)
 
 
 # ----- products -----
