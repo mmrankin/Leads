@@ -112,7 +112,8 @@ def build_adf(lead, dealer, valuation=None, request_dt=None, product_code=None):
     # Tecobi expects the XML declaration first (the XML-valid order); everyone
     # else gets the legacy ADF-first order.
     crm = (_pdb.crm_name_for(dealer) if _pdb else None) or ""
-    if crm.strip().lower() == "tecobi":
+    is_tecobi = crm.strip().lower() == "tecobi"
+    if is_tecobi:
         p.append('<?xml version="1.0" encoding="UTF-8"?>\n')
         p.append('<?ADF version="1.0"?>\n')
     else:
@@ -165,7 +166,8 @@ def build_adf(lead, dealer, valuation=None, request_dt=None, product_code=None):
     p.append("    </vendor>\n")
 
     p.append("    <provider>\n")
-    p.append(_el("name", product_name, {"part": "full"}, indent=6))
+    p.append(_el("name", lead_source if is_tecobi else product_name,
+                 {"part": "full"}, indent=6))
     p.append("    </provider>\n")
 
     p.append("  </prospect>\n")

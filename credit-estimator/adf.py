@@ -92,10 +92,11 @@ def build_adf(lead, dealer, estimate=None, request_dt=None, product_code=None,
     id_value = lead.get("serial") or lead.get("id") or lead.get("lead_id")
 
     parts = []
-    # Tecobi expects the XML declaration first (the XML-valid order); everyone
-    # else gets the legacy ADF-first order.
+    # Tecobi: XML declaration first (XML-valid order) and the <provider> name is
+    # the lead source. Everyone else: legacy ADF-first order, provider = product.
     crm = (_pdb.crm_name_for(dealer) if _pdb else None) or ""
-    if crm.strip().lower() == "tecobi":
+    is_tecobi = crm.strip().lower() == "tecobi"
+    if is_tecobi:
         parts.append('<?xml version="1.0" encoding="UTF-8"?>\n')
         parts.append('<?ADF version="1.0"?>\n')
     else:
@@ -175,7 +176,8 @@ def build_adf(lead, dealer, estimate=None, request_dt=None, product_code=None,
 
     # Provider = this product (name = product; service = sub-source, if any).
     parts.append("    <provider>\n")
-    parts.append(_el("name", product_name, {"part": "full"}, indent=6))
+    parts.append(_el("name", lead_source if is_tecobi else product_name,
+                     {"part": "full"}, indent=6))
     parts.append(_el("service", subsource, indent=6))
     parts.append("    </provider>\n")
 
