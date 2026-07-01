@@ -24,19 +24,20 @@ import pymssql
 NOW = "CONVERT(varchar(19), SYSUTCDATETIME(), 120)"
 
 
-def _conn():
+def _conn(timeout=30):
     return pymssql.connect(
         server=os.environ.get("DLRPRO_DB_SERVER", "10.1.1.10"),
         user=os.environ.get("DLRPRO_DB_USER", "sa"),
         password=os.environ.get("DLRPRO_DB_PASSWORD", ""),
         database=os.environ.get("DLRPRO_DB_NAME", "dlrPro"),
-        timeout=30, login_timeout=10,
+        timeout=timeout, login_timeout=10,
     )
 
 
-def query(sql, params=None):
-    """Return list[dict]. Use %(name)s placeholders + a dict for params."""
-    c = _conn()
+def query(sql, params=None, timeout=30):
+    """Return list[dict]. Use %(name)s placeholders + a dict for params.
+    timeout is the per-query DB timeout in seconds (bump it for heavy scans)."""
+    c = _conn(timeout)
     try:
         cur = c.cursor(as_dict=True)
         if params is None:

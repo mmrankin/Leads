@@ -37,6 +37,7 @@ if PLATFORM_DIR not in sys.path:
 import platform_db as pdb
 import db
 import pipeline_source
+import pipeline_enrich
 from adf import build_adf
 from email_send import send_adf
 
@@ -134,6 +135,13 @@ def send_lead(row):
         "email_verdict": None, "email_score": None,
         "adf_xml": None, "email1_status": "pending", "email1_detail": None,
     }
+    # Enrich from the vehicle-owner record (panafax..tbl_ownership): vehicle +
+    # VIN, phone/email, and the estimated-finance notes block. Best-effort.
+    try:
+        pipeline_enrich.enrich_lead(lead)
+    except Exception as e:
+        LOG.warning("ownership enrichment failed for result %s: %s",
+                    row.get("result_id"), e)
     lead_id = db.insert_lead(lead)
     lead["id"] = lead_id
     adf_xml = build_adf(lead, dealer, estimate=None,
