@@ -4,6 +4,8 @@ All three lead types now live in dlrPro; this reads them and normalizes rows
 into a common shape so the admin can browse them in one place.
 """
 
+import json
+
 import dlrpro_db as dlr
 
 
@@ -164,6 +166,54 @@ FIELD_LABELS = {
     "amount_financed": "Amount financed", "monthly_payment": "Monthly payment",
     "max_vehicle_price": "Max affordable price",
 }
+
+
+# ----- Trigger Leads (CreditPipline match_result, via the 10.1.4.7 linked server) -----
+
+_TRIGGER_LEADS_SQL = """SELECT TOP {limit}
+  c.last_name AS CustomerName, r.retailer_name AS CPName, d.dealer_name AS ADFName,
+  m.result_id, m.run_group_id, m.run_id, m.subscription_id, m.bucket_id,
+  m.candidate_id, m.customer_record_id, m.retailer_id,
+  CAST(m.matched_payload AS NVARCHAR(MAX)) AS matched_payload,
+  CONVERT(varchar(19), m.returned_at, 120) AS returned_at,
+  m.stream_session_id, m.consumer_zip,
+  s.id AS sent_id, CONVERT(varchar(19), s.created, 120) AS sent_at
+FROM [10.1.4.7].[CreditPipline].[dbo].[match_result] m
+LEFT JOIN [10.1.4.7].[CreditPipline].[dbo].[customer_record] c ON c.customer_record_id = m.customer_record_id
+LEFT JOIN [10.1.4.7].[CreditPipline].[dbo].[retailer] r ON r.retailer_id = m.retailer_id
+LEFT JOIN dlrPro.dbo.dealers d ON d.dealer_id = r.retailer_code
+LEFT JOIN dlrPro.dbo.[sent] s ON d.id = s.dealer_id AND m.result_id = s.result_id
+{where}
+ORDER BY m.result_id ASC"""
+
+
+def trigger_leads(matching_customer=False, matching_dealer=False,
+                  sent_status="unsent", limit=1000):
+    """Rows from the CreditPipline match_result feed joined to the ADF dealer and
+    the sent ledger. Filters: matching_customer (c.last_name not null),
+    matching_dealer (d.dealer_name not null), sent_status = unsent|sent|all."""
+    conds = []
+    if matching_customer:
+        conds.append("c.last_name IS NOT NULL")
+    if matching_dealer:
+        conds.append("d.dealer_name IS NOT NULL")
+    if sent_status == "unsent":
+        conds.append("s.id IS NULL")
+    elif sent_status == "sent":
+        conds.append("s.id IS NOT NULL")
+    where = ("WHERE " + " AND ".join(conds)) if conds else ""
+    try:
+        rows = dlr.query(_TRIGGER_LEADS_SQL.format(limit=int(limit), where=where))
+    except Exception:
+        return []
+    for r in rows:
+        r["sent"] = r.get("sent_id") is not None
+        try:
+            payload = json.loads(r.get("matched_payload") or "{}")
+            r["trigger"] = (payload.get("trigger_desc") or "").strip() or None
+        except Exception:
+            r["trigger"] = None
+    return rows
 
 
 def get_lead_detail(product, lead_id):

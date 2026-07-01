@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Trigger Leads</h1>
+<p class="subtitle">
+    Live from the CreditPipline match feed (via the 10.1.4.7 linked server), joined
+    to the ADF dealer (by retailer code) and the sent ledger.
+</p>
+
+<div class="card">
+    <form method="get" action="{{ url_for('trigger_leads') }}" class="row" style="align-items:flex-end">
+        <label class="check" style="flex-direction:row;align-items:center;gap:8px">
+            <input type="checkbox" name="customer" value="1" {{ 'checked' if f_customer else '' }}>
+            <span>Matching customer</span>
+        </label>
+        <label class="check" style="flex-direction:row;align-items:center;gap:8px">
+            <input type="checkbox" name="dealer" value="1" {{ 'checked' if f_dealer else '' }}>
+            <span>Matching ADF dealer</span>
+        </label>
+        <div class="field" style="max-width:180px">
+            <label>Sent status</label>
+            <select name="sent">
+                <option value="unsent" {{ 'selected' if f_sent == 'unsent' else '' }}>Not sent</option>
+                <option value="sent" {{ 'selected' if f_sent == 'sent' else '' }}>Sent</option>
+                <option value="all" {{ 'selected' if f_sent == 'all' else '' }}>All</option>
+            </select>
+        </div>
+        <button type="submit" class="btn">Apply</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Results <span class="muted">({{ rows|length }}{{ '+' if rows|length == 1000 else '' }})</span></h2>
+    {% if rows %}
+    <div style="overflow-x:auto">
+    <table class="tbl nowrap">
+        <thead><tr>
+            <th>Result</th><th>Customer</th><th>CP Name</th><th>ADF Name</th>
+            <th>Trigger</th><th>Zip</th><th>Returned</th><th>Sent</th>
+            <th>Run grp</th><th>Run</th><th>Sub</th><th>Bucket</th><th>Candidate</th>
+            <th>Cust rec</th><th>Retailer</th><th>Stream</th><th>Payload</th>
+        </tr></thead>
+        <tbody>
+        {% for r in rows %}
+        <tr>
+            <td>{{ r.result_id }}</td>
+            <td>{{ r.CustomerName if r.CustomerName is not none else '—' }}</td>
+            <td>{{ r.CPName if r.CPName is not none else '—' }}</td>
+            <td>{{ r.ADFName if r.ADFName is not none else '—' }}</td>
+            <td>{{ r.trigger or '—' }}</td>
+            <td>{{ r.consumer_zip or '' }}</td>
+            <td>{{ r.returned_at or '' }}</td>
+            <td>{% if r.sent %}<span class="dot dot--sent"></span>{{ r.sent_at or 'yes' }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td>{{ r.run_group_id }}</td>
+            <td>{{ r.run_id }}</td>
+            <td>{{ r.subscription_id }}</td>
+            <td>{{ r.bucket_id }}</td>
+            <td>{{ r.candidate_id }}</td>
+            <td>{{ r.customer_record_id }}</td>
+            <td>{{ r.retailer_id }}</td>
+            <td>{{ r.stream_session_id }}</td>
+            <td title="{{ r.matched_payload }}">{{ (r.matched_payload or '')[:60] }}{{ '…' if (r.matched_payload or '')|length > 60 else '' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="subtitle">No matching rows for the current filters.</p>
+    {% endif %}
+</div>
+{% endblock %}

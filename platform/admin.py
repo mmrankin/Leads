@@ -277,6 +277,20 @@ def leads():
                            dealers={d["dealer_id"]: d["dealer_name"] for d in pdb.list_dealers()})
 
 
+@app.route("/trigger-leads")
+@require_login
+def trigger_leads():
+    f_customer = request.args.get("customer") == "1"
+    f_dealer = request.args.get("dealer") == "1"
+    f_sent = request.args.get("sent", "unsent")
+    if f_sent not in ("unsent", "sent", "all"):
+        f_sent = "unsent"
+    rows = leads_view.trigger_leads(matching_customer=f_customer,
+                                    matching_dealer=f_dealer, sent_status=f_sent)
+    return render_template("trigger_leads.html", rows=rows,
+                           f_customer=f_customer, f_dealer=f_dealer, f_sent=f_sent)
+
+
 @app.route("/lead/<product>/<int:lead_id>")
 @require_login
 def lead_detail(product, lead_id):
