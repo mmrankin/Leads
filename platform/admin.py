@@ -45,6 +45,18 @@ SETUP_PASSWORD = os.environ.get("SETUP_PASSWORD", "")
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
+
+# Cache-bust static CSS by its mtime so browsers pick up style changes after a deploy.
+_STYLE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "style.css")
+
+
+@app.context_processor
+def _assets():
+    try:
+        return {"css_v": int(os.path.getmtime(_STYLE_PATH))}
+    except OSError:
+        return {"css_v": 0}
+
 # Where each product's customer-facing app lives, so the admin can link to a
 # dealer's live form. Override per environment in .env.
 _CREDIT_BASE = os.environ.get("CREDIT_EST_BASE_URL", "http://localhost:5003")
