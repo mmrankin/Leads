@@ -103,7 +103,6 @@ def index():
         "admin.html",
         dealers=pdb.list_dealers(),
         states=US_STATES,
-        pipeline_flow=pdb.get_pipeline_flow(),
         crm_types=pdb.list_crm_types(),
         lead_sources=pdb.list_lead_sources(),
         default_source=pdb.DEFAULT_LEAD_SOURCE,
@@ -117,7 +116,7 @@ def pipeline_flow():
     enable = request.form.get("enable") == "1"
     pdb.set_pipeline_flow(enable)
     flash(f"Credit Pipeline lead flow turned {'ON' if enable else 'OFF'}.", "ok")
-    return redirect(url_for("index"))
+    return redirect(url_for("trigger_leads"))
 
 
 @app.route("/products")
@@ -288,7 +287,8 @@ def trigger_leads():
     rows = leads_view.trigger_leads(matching_customer=f_customer,
                                     matching_dealer=f_dealer, sent_status=f_sent)
     return render_template("trigger_leads.html", rows=rows,
-                           f_customer=f_customer, f_dealer=f_dealer, f_sent=f_sent)
+                           f_customer=f_customer, f_dealer=f_dealer, f_sent=f_sent,
+                           pipeline_flow=pdb.get_pipeline_flow())
 
 
 @app.route("/lead/<product>/<int:lead_id>")

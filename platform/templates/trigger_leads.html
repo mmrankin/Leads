@@ -7,6 +7,23 @@
 </p>
 
 <div class="card">
+    <h2>Credit Pipeline Lead Flow
+        <span class="muted">— {{ 'ON' if pipeline_flow else 'OFF' }}</span>
+    </h2>
+    <p class="subtitle">
+        Master switch for automated <strong>Credit Pipeline</strong> leads. When ON,
+        matched, unsent leads for dealers holding the <strong>Credit Pipeline</strong>
+        product are emailed to the dealer about once a minute. When OFF, nothing is sent.
+    </p>
+    <form method="post" action="{{ url_for('pipeline_flow') }}">
+        <input type="hidden" name="enable" value="{{ '0' if pipeline_flow else '1' }}">
+        <button type="submit" class="btn {{ 'btn--ghost' if pipeline_flow else '' }}">
+            {{ 'Turn OFF' if pipeline_flow else 'Turn ON' }}
+        </button>
+    </form>
+</div>
+
+<div class="card">
     <form method="get" action="{{ url_for('trigger_leads') }}" class="row" style="align-items:flex-end">
         <label class="check" style="flex-direction:row;align-items:center;gap:8px">
             <input type="checkbox" name="customer" value="1" {{ 'checked' if f_customer else '' }}>
