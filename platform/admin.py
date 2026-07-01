@@ -304,7 +304,8 @@ def trigger_leads():
                                     matching_dealer=f_dealer, sent_status=f_sent)
     return render_template("trigger_leads.html", rows=rows,
                            f_customer=f_customer, f_dealer=f_dealer, f_sent=f_sent,
-                           pipeline_flow=pdb.get_pipeline_flow(), can_send=_CP_SEND_OK)
+                           pipeline_flow=pdb.get_pipeline_flow(), can_send=_CP_SEND_OK,
+                           eligible_dealers=pdb.count_active_grants(pdb.PRODUCT_CREDIT_PIPELINE))
 
 
 @app.route("/trigger-send", methods=["POST"])

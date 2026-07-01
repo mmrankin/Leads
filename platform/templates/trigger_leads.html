@@ -6,21 +6,27 @@
     to the ADF dealer (by retailer code) and the sent ledger.
 </p>
 
-<div class="card">
-    <h2>Credit Pipeline Lead Flow
-        <span class="muted">— {{ 'ON' if pipeline_flow else 'OFF' }}</span>
-    </h2>
-    <p class="subtitle">
-        Master switch for automated <strong>Credit Pipeline</strong> leads. When ON,
-        matched, unsent leads for dealers holding the <strong>Credit Pipeline</strong>
-        product are emailed to the dealer about once a minute. When OFF, nothing is sent.
-    </p>
-    <form method="post" action="{{ url_for('pipeline_flow') }}">
-        <input type="hidden" name="enable" value="{{ '0' if pipeline_flow else '1' }}">
-        <button type="submit" class="btn {{ 'btn--ghost' if pipeline_flow else '' }}">
-            {{ 'Turn OFF' if pipeline_flow else 'Turn ON' }}
-        </button>
-    </form>
+<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap">
+    <div style="flex:1;min-width:280px">
+        <h2>Credit Pipeline Lead Flow
+            <span class="muted">— {{ 'ON' if pipeline_flow else 'OFF' }}</span>
+        </h2>
+        <p class="subtitle">
+            Master switch for automated <strong>Credit Pipeline</strong> leads. When ON,
+            matched, unsent leads for dealers holding the <strong>Credit Pipeline</strong>
+            product are emailed to the dealer about once a minute. When OFF, nothing is sent.
+        </p>
+        <form method="post" action="{{ url_for('pipeline_flow') }}">
+            <input type="hidden" name="enable" value="{{ '0' if pipeline_flow else '1' }}">
+            <button type="submit" class="btn {{ 'btn--ghost' if pipeline_flow else '' }}">
+                {{ 'Turn OFF' if pipeline_flow else 'Turn ON' }}
+            </button>
+        </form>
+    </div>
+    <div style="text-align:center;padding:6px 22px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel2)">
+        <div style="font-size:34px;font-weight:600;line-height:1">{{ eligible_dealers }}</div>
+        <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin-top:6px">Eligible dealers</div>
+    </div>
 </div>
 
 <div class="card">

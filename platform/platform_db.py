@@ -276,6 +276,18 @@ def dealer_has_any_product(dealer_id, product_codes, on_date=None):
     return any(dealer_has_product(dealer_id, c, on_date) for c in product_codes)
 
 
+def count_active_grants(product_code, on_date=None):
+    """Number of dealers with an active grant for the product (default today)."""
+    today = on_date or date.today().isoformat()
+    row = dlr.one(
+        "SELECT COUNT(DISTINCT dealer_id) AS c FROM dealer_products "
+        "WHERE product_code=%(p)s "
+        "AND (valid_from IS NULL OR valid_from<=%(t)s) "
+        "AND (valid_to IS NULL OR valid_to>=%(t)s)",
+        {"p": product_code, "t": today})
+    return row["c"] if row else 0
+
+
 # ----- valuation settings -----
 
 CONDITION_ADJ_FIELDS = (
