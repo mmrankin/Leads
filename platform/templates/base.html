@@ -22,12 +22,19 @@
                 <a class="nav-item {{ 'active' if not on_leads and not on_products and not on_crm and not on_sources and not on_triggers else '' }}" href="{{ url_for('index') }}">
                     <svg viewBox="0 0 24 24"><path d="M3 21h18M4 21V8l8-5 8 5v13M9 21v-6h6v6"/></svg>
                     <span>Dealers</span></a>
-                <a class="nav-item {{ 'active' if on_leads else '' }}" href="{{ url_for('leads') }}">
-                    <svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 9h16M9 9v11"/></svg>
-                    <span>Leads</span></a>
-                <a class="nav-item {{ 'active' if on_triggers else '' }}" href="{{ url_for('trigger_leads') }}">
-                    <svg viewBox="0 0 24 24"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
-                    <span>Trigger Leads</span></a>
+                <div class="nav-parent {{ 'open' if on_leads or on_triggers else '' }}">
+                    <svg class="ic" viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 9h16M9 9v11"/></svg>
+                    <span>Leads</span>
+                    <svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+                </div>
+                <div class="nav-sub {{ 'open' if on_leads or on_triggers else '' }}">
+                    <a class="nav-item {{ 'active' if on_leads else '' }}" href="{{ url_for('leads') }}">
+                        <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+                        <span>Sent</span></a>
+                    <a class="nav-item {{ 'active' if on_triggers else '' }}" href="{{ url_for('trigger_leads') }}">
+                        <svg viewBox="0 0 24 24"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
+                        <span>Trigger Leads</span></a>
+                </div>
                 <div class="nav-parent {{ 'open' if on_products or on_crm or on_sources else '' }}">
                     <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
                     <span>Admin</span>

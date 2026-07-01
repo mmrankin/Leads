@@ -87,7 +87,7 @@
             <td>{{ r.customer_record_id }}</td>
             <td>{{ r.retailer_id }}</td>
             <td>{{ r.stream_session_id }}</td>
-            <td title="{{ r.matched_payload }}">{{ (r.matched_payload or '')[:60] }}{{ '…' if (r.matched_payload or '')|length > 60 else '' }}</td>
+            <td style="cursor:help;max-width:260px;overflow:hidden;text-overflow:ellipsis" title="{{ r.payload_pretty }}">{{ (r.matched_payload or '')[:60] }}{{ '…' if (r.matched_payload or '')|length > 60 else '' }}</td>
         </tr>
         {% endfor %}
         </tbody>

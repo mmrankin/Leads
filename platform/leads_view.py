@@ -208,11 +208,14 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
         return []
     for r in rows:
         r["sent"] = r.get("sent_id") is not None
+        raw = r.get("matched_payload") or ""
         try:
-            payload = json.loads(r.get("matched_payload") or "{}")
+            payload = json.loads(raw) if raw else {}
             r["trigger"] = (payload.get("trigger_desc") or "").strip() or None
+            r["payload_pretty"] = json.dumps(payload, indent=2) if payload else raw
         except Exception:
             r["trigger"] = None
+            r["payload_pretty"] = raw
     return rows
 
 
