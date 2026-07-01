@@ -38,3 +38,12 @@ ORDER BY m.result_id ASC"""
 def fetch_unsent(limit=1000):
     """Return matched, not-yet-sent trigger-lead rows (list[dict])."""
     return dlr.query(_FETCH_SQL.format(limit=int(limit), ls=LINKED_SERVER, db=DB))
+
+
+def fetch_one(result_id):
+    """One matched, not-yet-sent row for a specific result_id, or None."""
+    sql = _FETCH_SQL.format(limit=1, ls=LINKED_SERVER, db=DB).replace(
+        "WHERE s.id IS NULL AND c.last_name IS NOT NULL",
+        "WHERE s.id IS NULL AND c.last_name IS NOT NULL AND m.result_id = %(rid)s")
+    rows = dlr.query(sql, {"rid": int(result_id)})
+    return rows[0] if rows else None

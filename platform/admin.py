@@ -5,6 +5,7 @@ the dealer-leads and trade-in apps. Gated by SETUP_PASSWORD.
 """
 
 import os
+import sys
 from functools import wraps
 
 try:
@@ -19,6 +20,21 @@ from flask import (
 
 import platform_db as pdb
 import leads_view
+
+# The Credit Pipeline send path (build ADF -> email -> store -> record in `sent`)
+# lives in the credit app and is shared with the poller. Import it so the admin's
+# "Send Lead" button uses the exact same process (in-process; no public endpoint).
+CREDIT_DIR = os.environ.get(
+    "CREDIT_DIR",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "credit-estimator"))
+if CREDIT_DIR not in sys.path:
+    sys.path.insert(0, CREDIT_DIR)
+try:
+    import pipeline_source as _cp_source
+    from pipeline_poller import send_lead as _cp_send_lead, eligible as _cp_eligible
+    _CP_SEND_OK = True
+except Exception as _cp_exc:  # keep the admin working even if the send path is unavailable
+    _CP_SEND_OK = False
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-change-me")
@@ -288,7 +304,34 @@ def trigger_leads():
                                     matching_dealer=f_dealer, sent_status=f_sent)
     return render_template("trigger_leads.html", rows=rows,
                            f_customer=f_customer, f_dealer=f_dealer, f_sent=f_sent,
-                           pipeline_flow=pdb.get_pipeline_flow())
+                           pipeline_flow=pdb.get_pipeline_flow(), can_send=_CP_SEND_OK)
+
+
+@app.route("/trigger-send", methods=["POST"])
+@require_login
+def trigger_send():
+    """Send one Credit Pipeline lead for a match result_id (same process as the
+    poller: build ADF -> email -> store in credit_leads -> record in `sent`)."""
+    result_id = (request.form.get("result_id") or "").strip()
+    keep = {k: request.form.get(k) for k in ("customer", "dealer", "sent")
+            if request.form.get(k)}
+    if not _CP_SEND_OK:
+        flash("Send is unavailable — the credit send modules failed to load.", "error")
+        return redirect(url_for("trigger_leads", **keep))
+    row = _cp_source.fetch_one(result_id) if result_id else None
+    if not row:
+        flash(f"Result #{result_id} can't be sent (no matched dealer/customer, or already sent).", "error")
+        return redirect(url_for("trigger_leads", **keep))
+    ok, reason = _cp_eligible(row)
+    if not ok:
+        flash(f"Result #{result_id} not sent — {reason}.", "error")
+        return redirect(url_for("trigger_leads", **keep))
+    status, detail, lead_id = _cp_send_lead(row)
+    if status in ("sent", "pending"):
+        flash(f"Lead sent to {row.get('dealer_name')} (result #{result_id}, {status}).", "ok")
+    else:
+        flash(f"Send failed for result #{result_id}: {status} — {detail}", "error")
+    return redirect(url_for("trigger_leads", **keep))
 
 
 @app.route("/lead/<product>/<int:lead_id>")
