@@ -131,7 +131,7 @@ def send_lead(row):
         "vehicle_model": (row.get("vehicle_model") or "").strip() or None,
         "comments": None,
         "source": SOURCE, "subsource": subsource,
-        "tc_agreed": None, "tc_agreed_at": None,
+        "tc_agreed": 0, "tc_agreed_at": None,   # bureau trigger; no on-platform T&C (col is NOT NULL)
         "email_verdict": None, "email_score": None,
         "adf_xml": None, "email1_status": "pending", "email1_detail": None,
     }
