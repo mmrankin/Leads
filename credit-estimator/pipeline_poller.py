@@ -62,13 +62,45 @@ def _phone(row):
     return ""
 
 
+def _s(val):
+    return str(val).strip() if val is not None else ""
+
+
+def resolve_contact(row):
+    """Name/address for a match row. Prefers the matched customer_record; when the
+    customer_record_id doesn't exist (LEFT-join miss), falls back to the name and
+    address carried in the matched_payload JSON. Email/phone come only from the
+    customer_record (the payload carries none)."""
+    payload = {}
+    try:
+        payload = json.loads(row.get("matched_payload") or "{}") or {}
+    except (ValueError, TypeError):
+        payload = {}
+
+    def pick(row_key, payload_key):
+        return _s(row.get(row_key)) or _s(payload.get(payload_key))
+
+    return {
+        "first_name": pick("first_name", "first_name"),
+        "last_name": pick("last_name", "last_name"),
+        "email": _s(row.get("email_address")),
+        "phone": _phone(row),
+        "address": pick("address", "address_line_1"),
+        "city": pick("city", "city"),
+        "state": pick("state", "state"),
+        "zip": pick("zip", "consumer_zip") or _s(row.get("consumer_zip")),
+    }
+
+
 def eligible(row):
     """A fetched row is eligible if the dealer holds an active CREDIT_PIPELINE
-    grant and the customer has an email or phone. Returns (ok, reason)."""
+    grant and we have a customer name (from the matched record or, when there is
+    no customer_record, from the matched_payload). Returns (ok, reason)."""
     if not pdb.dealer_has_product(row.get("dealer_id"), pdb.PRODUCT_CREDIT_PIPELINE):
         return False, "no active CREDIT_PIPELINE grant"
-    if not (row.get("email_address") or "").strip() and not _phone(row):
-        return False, "no email or phone"
+    c = resolve_contact(row)
+    if not c["last_name"] and not c["first_name"]:
+        return False, "no customer name (record or payload)"
     return True, None
 
 
@@ -81,17 +113,18 @@ def send_lead(row):
     if not dealer:
         return "skipped_no_dealer", f"dealer {dealer_id} not found", None
     subsource = _subsource(row.get("matched_payload"))
+    c = resolve_contact(row)
 
     lead = {
         "dealer_id": dealer_id,
-        "first_name": (row.get("first_name") or "").strip(),
-        "last_name": (row.get("last_name") or "").strip(),
-        "email": (row.get("email_address") or "").strip(),
-        "phone": _phone(row),
-        "address": (row.get("address") or "").strip() or None,
-        "city": (row.get("city") or "").strip() or None,
-        "state": (row.get("state") or "").strip() or None,
-        "zip": (row.get("zip") or "").strip() or None,
+        "first_name": c["first_name"],
+        "last_name": c["last_name"],
+        "email": c["email"],
+        "phone": c["phone"],
+        "address": c["address"] or None,
+        "city": c["city"] or None,
+        "state": c["state"] or None,
+        "zip": c["zip"] or None,
         "vehicle_year": str(row.get("vehicle_year") or "").strip() or None,
         "vehicle_make": (row.get("vehicle_make") or "").strip() or None,
         "vehicle_model": (row.get("vehicle_model") or "").strip() or None,
