@@ -114,3 +114,13 @@ a{color:var(--accent)}
 .dot--pending{background:var(--amber)}
 .dot--failed{background:var(--red)}
 code{background:var(--panel2);padding:1px 6px;border-radius:4px;font-size:.85em;color:#cbd5e1}
+
+/* modal (click-to-view, e.g. Trigger Leads payload) */
+.modal{position:fixed;inset:0;z-index:100;align-items:center;justify-content:center}
+.modal-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.6)}
+.modal-box{position:relative;z-index:1;width:600px;max-width:92vw;max-height:82vh;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:0 20px 60px rgba(0,0,0,.55)}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.modal-close{background:none;border:none;color:var(--muted);font-size:24px;line-height:1;cursor:pointer;padding:0 4px}
+.modal-close:hover{color:var(--txt)}
+.modal-box .adf{margin:0;flex:1;overflow:auto}
+.pl-view{cursor:pointer}

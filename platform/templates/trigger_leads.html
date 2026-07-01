@@ -93,7 +93,13 @@
             <td>{{ r.customer_record_id }}</td>
             <td>{{ r.retailer_id }}</td>
             <td>{{ r.stream_session_id }}</td>
-            <td style="cursor:help;max-width:260px;overflow:hidden;text-overflow:ellipsis" title="{{ r.payload_pretty }}">{{ (r.matched_payload or '')[:60] }}{{ '…' if (r.matched_payload or '')|length > 60 else '' }}</td>
+            <td>
+                {% if r.matched_payload %}
+                <a href="#" class="pl-view" data-payload="{{ r.payload_pretty }}">
+                    {{ (r.matched_payload or '')[:32] }}{{ '…' if (r.matched_payload or '')|length > 32 else '' }}
+                </a>
+                {% else %}<span class="muted">—</span>{% endif %}
+            </td>
         </tr>
         {% endfor %}
         </tbody>
@@ -103,4 +109,30 @@
     <p class="subtitle">No matching rows for the current filters.</p>
     {% endif %}
 </div>
+
+<div id="pl-modal" class="modal" style="display:none">
+    <div class="modal-backdrop"></div>
+    <div class="modal-box">
+        <div class="modal-head">
+            <strong>Matched payload</strong>
+            <button type="button" class="modal-close" aria-label="Close">&times;</button>
+        </div>
+        <pre class="adf" id="pl-modal-body"></pre>
+    </div>
+</div>
+
+<script>
+(function () {
+    var modal = document.getElementById('pl-modal');
+    var body = document.getElementById('pl-modal-body');
+    function show(text) { body.textContent = text || ''; modal.style.display = 'flex'; }
+    function hide() { modal.style.display = 'none'; }
+    document.querySelectorAll('.pl-view').forEach(function (a) {
+        a.addEventListener('click', function (e) { e.preventDefault(); show(a.getAttribute('data-payload')); });
+    });
+    modal.querySelector('.modal-close').addEventListener('click', hide);
+    modal.querySelector('.modal-backdrop').addEventListener('click', hide);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); });
+})();
+</script>
 {% endblock %}
