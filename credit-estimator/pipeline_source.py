@@ -1,13 +1,13 @@
-"""Read matched, not-yet-sent trigger leads from the CreditPipline feed.
+"""Read matched, not-yet-sent trigger leads from the CreditPipeline feed.
 
-CreditPipline lives on 10.1.4.7, a linked server on the dlrPro SQL instance
-(10.1.1.10). We match a CreditPipline retailer to a dlrPro dealer by
+CreditPipeline lives on 10.1.4.7, a linked server on the dlrPro SQL instance
+(10.1.1.10). We match a CreditPipeline retailer to a dlrPro dealer by
 retailer_code = dealer_id, join the customer contact, and exclude anything
 already in the dlrPro `sent` ledger. Runs through the dlrPro connection.
 
 Env:
     CREDITPIPELINE_LINKED_SERVER   linked-server name on dlrPro (default 10.1.4.7)
-    CREDITPIPELINE_DB              database name (default CreditPipline)
+    CREDITPIPELINE_DB              database name (default CreditPipeline)
 """
 
 import os
@@ -15,7 +15,7 @@ import os
 import dlrpro_db as dlr
 
 LINKED_SERVER = os.environ.get("CREDITPIPELINE_LINKED_SERVER", "10.1.4.7")
-DB = os.environ.get("CREDITPIPELINE_DB", "CreditPipline")
+DB = os.environ.get("CREDITPIPELINE_DB", "CreditPipeline")
 
 # Matched dealer (retailer_code = dealer_id), not yet in dbo.sent. The customer
 # record is LEFT-joined: when the customer_record_id doesn't exist, the poller

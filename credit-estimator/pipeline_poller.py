@@ -2,7 +2,7 @@
 """Credit Pipeline lead poller — run every minute (launchd/cron).
 
 When the global Credit Pipeline flow switch is ON, this pulls matched, not-yet-
-sent trigger leads from the CreditPipline feed (via the 10.1.4.7 linked server;
+sent trigger leads from the CreditPipeline feed (via the 10.1.4.7 linked server;
 matched by retailer_code = dealer_id and excluded via the dlrPro `sent` ledger),
 and — for dealers holding an active CREDIT_PIPELINE grant — emails an ADF/XML
 lead, stores it in credit_leads, and records the send in `sent`.

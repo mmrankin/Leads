@@ -168,7 +168,7 @@ FIELD_LABELS = {
 }
 
 
-# ----- Trigger Leads (CreditPipline match_result, via the 10.1.4.7 linked server) -----
+# ----- Trigger Leads (CreditPipeline match_result, via the 10.1.4.7 linked server) -----
 
 _TRIGGER_LEADS_SQL = """SELECT TOP {limit}
   c.last_name AS CustomerName, r.retailer_name AS CPName, d.dealer_name AS ADFName,
@@ -178,9 +178,9 @@ _TRIGGER_LEADS_SQL = """SELECT TOP {limit}
   CONVERT(varchar(19), m.returned_at, 120) AS returned_at,
   m.stream_session_id, m.consumer_zip,
   s.id AS sent_id, CONVERT(varchar(19), s.created, 120) AS sent_at
-FROM [10.1.4.7].[CreditPipline].[dbo].[match_result] m
-LEFT JOIN [10.1.4.7].[CreditPipline].[dbo].[customer_record] c ON c.customer_record_id = m.customer_record_id
-LEFT JOIN [10.1.4.7].[CreditPipline].[dbo].[retailer] r ON r.retailer_id = m.retailer_id
+FROM [10.1.4.7].[CreditPipeline].[dbo].[match_result] m
+LEFT JOIN [10.1.4.7].[CreditPipeline].[dbo].[customer_record] c ON c.customer_record_id = m.customer_record_id
+LEFT JOIN [10.1.4.7].[CreditPipeline].[dbo].[retailer] r ON r.retailer_id = m.retailer_id
 LEFT JOIN dlrPro.dbo.dealers d ON d.dealer_id = r.retailer_code
 LEFT JOIN dlrPro.dbo.[sent] s ON d.id = s.dealer_id AND m.result_id = s.result_id
 {where}
@@ -189,7 +189,7 @@ ORDER BY m.result_id ASC"""
 
 def trigger_leads(matching_customer=False, matching_dealer=False,
                   sent_status="unsent", limit=1000):
-    """Rows from the CreditPipline match_result feed joined to the ADF dealer and
+    """Rows from the CreditPipeline match_result feed joined to the ADF dealer and
     the sent ledger. Filters: matching_customer (c.last_name not null),
     matching_dealer (d.dealer_name not null), sent_status = unsent|sent|all."""
     conds = []
