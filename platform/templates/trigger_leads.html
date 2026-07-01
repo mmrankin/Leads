@@ -57,22 +57,14 @@
     <div style="overflow-x:auto">
     <table class="tbl nowrap">
         <thead><tr>
-            <th>Result</th><th>Customer</th><th>CP Name</th><th>ADF Name</th>
-            <th>Trigger</th><th>Zip</th><th>Returned</th><th>Sent</th><th>Action</th>
+            <th>Action</th><th>Result</th><th>Customer</th><th>CP Name</th><th>ADF Name</th>
+            <th>Trigger</th><th>Zip</th><th>Returned</th><th>Sent</th>
             <th>Run grp</th><th>Run</th><th>Sub</th><th>Bucket</th><th>Candidate</th>
             <th>Cust rec</th><th>Retailer</th><th>Stream</th><th>Payload</th>
         </tr></thead>
         <tbody>
         {% for r in rows %}
         <tr>
-            <td>{{ r.result_id }}</td>
-            <td>{{ r.CustomerName if r.CustomerName is not none else '—' }}</td>
-            <td>{{ r.CPName if r.CPName is not none else '—' }}</td>
-            <td>{{ r.ADFName if r.ADFName is not none else '—' }}</td>
-            <td>{{ r.trigger or '—' }}</td>
-            <td>{{ r.consumer_zip or '' }}</td>
-            <td>{{ r.returned_at or '' }}</td>
-            <td>{% if r.sent %}<span class="dot dot--sent"></span>{{ r.sent_at or 'yes' }}{% else %}<span class="muted">—</span>{% endif %}</td>
             <td>
                 {% if not r.sent and can_send %}
                 <form method="post" action="{{ url_for('trigger_send') }}" style="margin:0"
@@ -85,6 +77,14 @@
                 </form>
                 {% endif %}
             </td>
+            <td>{{ r.result_id }}</td>
+            <td>{{ r.CustomerName if r.CustomerName is not none else '—' }}</td>
+            <td>{{ r.CPName if r.CPName is not none else '—' }}</td>
+            <td>{{ r.ADFName if r.ADFName is not none else '—' }}</td>
+            <td>{{ r.trigger or '—' }}</td>
+            <td>{{ r.consumer_zip or '' }}</td>
+            <td>{{ r.returned_at or '' }}</td>
+            <td>{% if r.sent %}<span class="dot dot--sent"></span>{{ r.sent_at or 'yes' }}{% else %}<span class="muted">—</span>{% endif %}</td>
             <td>{{ r.run_group_id }}</td>
             <td>{{ r.run_id }}</td>
             <td>{{ r.subscription_id }}</td>
