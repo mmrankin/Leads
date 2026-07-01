@@ -129,7 +129,7 @@ def send_lead(row):
         "vehicle_year": str(row.get("vehicle_year") or "").strip() or None,
         "vehicle_make": (row.get("vehicle_make") or "").strip() or None,
         "vehicle_model": (row.get("vehicle_model") or "").strip() or None,
-        "comments": f"Credit Pipeline match (result #{row['result_id']}).",
+        "comments": None,
         "source": SOURCE, "subsource": subsource,
         "tc_agreed": None, "tc_agreed_at": None,
         "email_verdict": None, "email_score": None,
