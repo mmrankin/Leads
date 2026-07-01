@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Credit Pipeline lead poller — run every minute (launchd/cron).
 
-When the global Credit Pipeline flow switch is ON, this pulls new matched
-results from the CreditPipline DB (via the 10.1.4.7 linked server), maps each to
-the platform dealer whose name matches the retailer, and emails an ADF/XML lead
-to that dealer (source "Credit Pipeline"; sub-source from the matched payload's
-trigger_desc). Each match_result.result_id is sent at most once.
+When the global Credit Pipeline flow switch is ON, this pulls matched, not-yet-
+sent trigger leads from the CreditPipline feed (via the 10.1.4.7 linked server;
+matched by retailer_code = dealer_id and excluded via the dlrPro `sent` ledger),
+and — for dealers holding an active CREDIT_PIPELINE grant — emails an ADF/XML
+lead, stores it in credit_leads, and records the send in `sent`.
 
-The switch defaults OFF — nothing is sent until an admin turns it on.
+The same send_lead() is used by the admin "Send Lead" button. The switch
+defaults OFF — nothing is sent until an admin turns it on.
 
 Usage:
     python pipeline_poller.py             # normal run
@@ -45,7 +46,7 @@ BATCH = int(os.environ.get("CREDITPIPELINE_BATCH", "1000"))
 
 
 def _subsource(payload):
-    """Sub-source = matched_payload.trigger_desc (e.g. 'Auto Inquiry (combined)')."""
+    """Sub-source = matched_payload.trigger_desc (e.g. 'Auto Prequalification Inquiry')."""
     try:
         data = json.loads(payload) if payload else {}
     except (ValueError, TypeError):
@@ -61,54 +62,45 @@ def _phone(row):
     return ""
 
 
-def process_row(row, dry_run=False):
-    """Resolve + (unless dry-run) send one matched result.
+def eligible(row):
+    """A fetched row is eligible if the dealer holds an active CREDIT_PIPELINE
+    grant and the customer has an email or phone. Returns (ok, reason)."""
+    if not pdb.dealer_has_product(row.get("dealer_id"), pdb.PRODUCT_CREDIT_PIPELINE):
+        return False, "no active CREDIT_PIPELINE grant"
+    if not (row.get("email_address") or "").strip() and not _phone(row):
+        return False, "no email or phone"
+    return True, None
 
-    Returns (status, detail, dealer_id, lead_id, subsource). status is the
-    send status ('sent'/'pending'/'failed') or a 'skipped_*' reason.
-    """
-    result_id = row["result_id"]
-    retailer = (row.get("retailer_name") or "").strip()
-    subsource = _subsource(row.get("matched_payload"))
 
-    dealer = pdb.find_dealer_by_name(retailer)
+def send_lead(row):
+    """Build + send one Credit Pipeline lead from a fetched match row, store it in
+    credit_leads, and record it in the `sent` ledger. Returns (status, detail,
+    lead_id). Assumes the row is already eligible()."""
+    dealer_id = row["dealer_id"]
+    dealer = pdb.get_dealer(dealer_id)
     if not dealer:
-        return "skipped_no_dealer", f"No platform dealer named '{retailer}'.", None, None, subsource
-    dealer_id = dealer["dealer_id"]
-    if not pdb.dealer_has_product(dealer_id, pdb.PRODUCT_CREDIT_PIPELINE):
-        return ("skipped_no_grant",
-                f"Dealer {dealer_id} has no active CREDIT_PIPELINE grant.",
-                dealer_id, None, subsource)
-
-    email = (row.get("email_address") or "").strip()
-    phone = _phone(row)
-    if not email and not phone:
-        return "skipped_no_contact", "No email or phone on customer_record.", dealer_id, None, subsource
+        return "skipped_no_dealer", f"dealer {dealer_id} not found", None
+    subsource = _subsource(row.get("matched_payload"))
 
     lead = {
         "dealer_id": dealer_id,
         "first_name": (row.get("first_name") or "").strip(),
         "last_name": (row.get("last_name") or "").strip(),
-        "email": email, "phone": phone,
+        "email": (row.get("email_address") or "").strip(),
+        "phone": _phone(row),
+        "address": (row.get("address") or "").strip() or None,
+        "city": (row.get("city") or "").strip() or None,
+        "state": (row.get("state") or "").strip() or None,
+        "zip": (row.get("zip") or "").strip() or None,
         "vehicle_year": str(row.get("vehicle_year") or "").strip() or None,
         "vehicle_make": (row.get("vehicle_make") or "").strip() or None,
         "vehicle_model": (row.get("vehicle_model") or "").strip() or None,
-        "comments": f"Credit Pipeline match (result #{result_id}).",
+        "comments": f"Credit Pipeline match (result #{row['result_id']}).",
         "source": SOURCE, "subsource": subsource,
         "tc_agreed": None, "tc_agreed_at": None,
         "email_verdict": None, "email_score": None,
+        "adf_xml": None, "email1_status": "pending", "email1_detail": None,
     }
-
-    if dry_run:
-        return ("dry_run",
-                f"Would send to {dealer_id} <{dealer.get('lead_email_address')}>, "
-                f"sub-source={subsource!r}",
-                dealer_id, None, subsource)
-
-    # Persist first so the lead id is the ADF source-lineage id, then build +
-    # attach the ADF (Credit Pipeline product, derived sub-source) and deliver.
-    lead["adf_xml"] = None
-    lead["email1_status"], lead["email1_detail"] = "pending", None
     lead_id = db.insert_lead(lead)
     lead["id"] = lead_id
     adf_xml = build_adf(lead, dealer, estimate=None,
@@ -116,41 +108,39 @@ def process_row(row, dry_run=False):
     db.update_adf(lead_id, adf_xml)
     status, detail = send_adf(dealer, adf_xml, lead_id=lead_id, lead=lead)
     db.set_email_status(lead_id, 1, status, detail)
-    return status, detail, dealer_id, lead_id, subsource
+    # Record in the sent ledger keyed by dealers.id + match result_id.
+    pdb.record_sent(row["dealers_id"], row["result_id"])
+    return status, detail, lead_id
 
 
 def run(dry_run=False):
-    pdb.init_db()  # ensure products + pipeline tables exist
+    pdb.init_db()
     if not pdb.get_pipeline_flow():
         LOG.info("Credit Pipeline flow is OFF — nothing to do.")
         return
-
-    after = pdb.get_pipeline_watermark()
-    rows = pipeline_source.fetch_matches(after_result_id=after, limit=BATCH)
+    rows = pipeline_source.fetch_unsent(limit=BATCH)
     if not rows:
-        LOG.info("No new matches after result_id %s.", after)
+        LOG.info("No matched, unsent trigger leads.")
         return
 
-    already = pdb.pipeline_sent_result_ids([r["result_id"] for r in rows])
-    max_id, counts = after, {}
+    counts = {}
     for row in rows:
-        rid = int(row["result_id"])
-        max_id = max(max_id, rid)
-        if rid in already:
+        ok, reason = eligible(row)
+        if not ok:
+            counts["skipped"] = counts.get("skipped", 0) + 1
+            LOG.info("result %s (%s) -> skipped: %s", row["result_id"], row["dealer_id"], reason)
             continue
-        # Claim the result_id first so an interrupted run can't double-send it.
-        if not dry_run and not pdb.pipeline_claim(rid, (row.get("retailer_name") or "").strip()):
+        if dry_run:
+            counts["dry_run"] = counts.get("dry_run", 0) + 1
+            LOG.info("result %s -> would send to %s <%s>",
+                     row["result_id"], row["dealer_id"], row.get("lead_email_address"))
             continue
-        status, detail, dealer_id, lead_id, subsource = process_row(row, dry_run=dry_run)
+        status, detail, lead_id = send_lead(row)
         counts[status] = counts.get(status, 0) + 1
-        if not dry_run:
-            pdb.pipeline_finalize(rid, dealer_id, lead_id, subsource, status, detail)
-        LOG.info("result %s -> %s (%s)", rid, status, detail)
+        LOG.info("result %s -> %s (lead %s) %s", row["result_id"], status, lead_id, detail)
 
-    if not dry_run:
-        pdb.set_pipeline_watermark(max_id)
-    LOG.info("Run complete (%s). Fetched %d, new %d: %s",
-             "dry-run" if dry_run else "live", len(rows), sum(counts.values()), counts)
+    LOG.info("Run complete (%s). Fetched %d: %s",
+             "dry-run" if dry_run else "live", len(rows), counts)
 
 
 if __name__ == "__main__":

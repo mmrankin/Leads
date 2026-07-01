@@ -1,8 +1,9 @@
-"""Read matched leads from the CreditPipline database.
+"""Read matched, not-yet-sent trigger leads from the CreditPipline feed.
 
-CreditPipline lives on 10.1.4.7, which is a linked server on the dlrPro SQL
-instance (10.1.1.10). We reach it read-only through OPENQUERY on the dlrPro
-connection (dlrpro_db), so no separate credentials/route to 10.1.4.7 are needed.
+CreditPipline lives on 10.1.4.7, a linked server on the dlrPro SQL instance
+(10.1.1.10). We match a CreditPipline retailer to a dlrPro dealer by
+retailer_code = dealer_id, join the customer contact, and exclude anything
+already in the dlrPro `sent` ledger. Runs through the dlrPro connection.
 
 Env:
     CREDITPIPELINE_LINKED_SERVER   linked-server name on dlrPro (default 10.1.4.7)
@@ -16,29 +17,24 @@ import dlrpro_db as dlr
 LINKED_SERVER = os.environ.get("CREDITPIPELINE_LINKED_SERVER", "10.1.4.7")
 DB = os.environ.get("CREDITPIPELINE_DB", "CreditPipline")
 
-# Runs ON the remote server (inside OPENQUERY). One row per matched result, with
-# the consumer (customer_record) and dealer (retailer) joined in. Only result_ids
-# above the caller's high-water mark, oldest first, capped at `limit`.
-_INNER = (
-    "SELECT TOP {limit} "
-    " m.result_id, m.retailer_id, m.customer_record_id, m.matched_payload, "
-    " m.consumer_zip, CONVERT(varchar(19), m.returned_at, 120) AS returned_at, "
-    " c.first_name, c.last_name, c.email_address, "
-    " c.cell_phone, c.home_phone, c.work_phone, "
-    " c.year AS vehicle_year, c.make AS vehicle_make, c.model AS vehicle_model, "
-    " c.vin, c.postal_code, r.retailer_name "
-    "FROM {db}.dbo.match_result AS m WITH (NOLOCK) "
-    "INNER JOIN {db}.dbo.customer_record AS c WITH (NOLOCK) "
-    " ON c.customer_record_id = m.customer_record_id "
-    "INNER JOIN {db}.dbo.retailer AS r WITH (NOLOCK) "
-    " ON r.retailer_id = m.retailer_id "
-    "WHERE m.result_id > {after} "
-    "ORDER BY m.result_id"
-)
+# Matched dealer (retailer_code = dealer_id) + matched customer (has a surname),
+# not yet in dbo.sent. dealers_id is dealers.id (the value stored in sent).
+_FETCH_SQL = """SELECT TOP {limit}
+  m.result_id, m.matched_payload, m.consumer_zip,
+  d.id AS dealers_id, d.dealer_id, d.dealer_name, d.lead_email_address,
+  c.first_name, c.last_name, c.email_address,
+  c.cell_phone, c.home_phone, c.work_phone,
+  c.address_line1 AS address, c.city, c.state, c.postal_code AS zip,
+  c.year AS vehicle_year, c.make AS vehicle_make, c.model AS vehicle_model
+FROM [{ls}].[{db}].[dbo].[match_result] m
+JOIN [{ls}].[{db}].[dbo].[customer_record] c ON c.customer_record_id = m.customer_record_id
+JOIN [{ls}].[{db}].[dbo].[retailer] r ON r.retailer_id = m.retailer_id
+JOIN dlrPro.dbo.dealers d ON d.dealer_id = r.retailer_code
+LEFT JOIN dlrPro.dbo.[sent] s ON s.dealer_id = d.id AND s.result_id = m.result_id
+WHERE s.id IS NULL AND c.last_name IS NOT NULL
+ORDER BY m.result_id ASC"""
 
 
-def fetch_matches(after_result_id=0, limit=1000):
-    """Return new matched-lead rows (list[dict]) with result_id > after_result_id."""
-    inner = _INNER.format(limit=int(limit), db=DB, after=int(after_result_id))
-    sql = f"SELECT * FROM OPENQUERY([{LINKED_SERVER}], '{inner.replace(chr(39), chr(39) * 2)}')"
-    return dlr.query(sql)
+def fetch_unsent(limit=1000):
+    """Return matched, not-yet-sent trigger-lead rows (list[dict])."""
+    return dlr.query(_FETCH_SQL.format(limit=int(limit), ls=LINKED_SERVER, db=DB))

@@ -374,12 +374,12 @@ def upsert_credit_settings(data):
 
 # ----- platform settings + Credit Pipeline lead flow -----
 #
-# A small key/value settings table holds the global Credit Pipeline on/off
-# switch and the poller's high-water mark. credit_pipeline_sent is the
-# send-once ledger: one row per match_result.result_id ever processed.
+# platform_settings (key/value) holds the global Credit Pipeline on/off switch.
+# The `sent` table is the send-once ledger — one row per (dealer, match result):
+# id, result_id, dealer_id (= dealers.id), created. Kept lean; it grows large.
 
 def _ensure_pipeline_tables():
-    """Create the settings + Credit Pipeline ledger tables if missing. Idempotent."""
+    """Create the settings table + the `sent` ledger if missing. Idempotent."""
     dlr.execute(
         "IF OBJECT_ID(N'dbo.platform_settings','U') IS NULL "
         "CREATE TABLE dbo.platform_settings ("
@@ -387,16 +387,12 @@ def _ensure_pipeline_tables():
         " setting_value NVARCHAR(MAX) NULL,"
         " updated_at NVARCHAR(32) NULL)")
     dlr.execute(
-        "IF OBJECT_ID(N'dbo.credit_pipeline_sent','U') IS NULL "
-        "CREATE TABLE dbo.credit_pipeline_sent ("
-        " result_id BIGINT NOT NULL PRIMARY KEY,"
-        " retailer_name NVARCHAR(200) NULL,"
-        " dealer_id NVARCHAR(64) NULL,"
-        " lead_id INT NULL,"
-        " subsource NVARCHAR(255) NULL,"
-        " status NVARCHAR(32) NULL,"
-        " detail NVARCHAR(MAX) NULL,"
-        " sent_at NVARCHAR(32) NULL)")
+        "IF OBJECT_ID(N'dbo.sent','U') IS NULL "
+        "CREATE TABLE dbo.sent ("
+        " id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,"
+        " result_id BIGINT NULL,"
+        " dealer_id BIGINT NULL,"
+        " created SMALLDATETIME NULL)")
 
 
 def get_setting(key, default=None):
@@ -416,7 +412,6 @@ def set_setting(key, value):
 
 
 PIPELINE_FLOW_KEY = "credit_pipeline_flow_enabled"
-PIPELINE_WATERMARK_KEY = "credit_pipeline_last_result_id"
 
 
 def get_pipeline_flow():
@@ -428,53 +423,18 @@ def set_pipeline_flow(enabled):
     set_setting(PIPELINE_FLOW_KEY, "1" if enabled else "0")
 
 
-def get_pipeline_watermark():
-    try:
-        return int(get_setting(PIPELINE_WATERMARK_KEY, "0") or 0)
-    except (TypeError, ValueError):
-        return 0
+# ----- Credit Pipeline sent ledger (dbo.sent) -----
+
+def is_sent(dealers_id, result_id):
+    """True if this (dealer, match result) is already in the sent ledger."""
+    return dlr.one("SELECT TOP 1 id FROM dbo.sent WHERE dealer_id=%(d)s AND result_id=%(r)s",
+                   {"d": int(dealers_id), "r": int(result_id)}) is not None
 
 
-def set_pipeline_watermark(result_id):
-    set_setting(PIPELINE_WATERMARK_KEY, str(int(result_id)))
-
-
-def find_dealer_by_name(name):
-    """Platform dealer whose name matches the retailer name (case/space-insensitive)."""
-    if not name or not name.strip():
-        return None
-    return dlr.one(
-        "SELECT * FROM dealers WHERE LOWER(LTRIM(RTRIM(dealer_name)))="
-        "LOWER(LTRIM(RTRIM(%(n)s)))", {"n": name.strip()})
-
-
-def pipeline_sent_result_ids(ids):
-    """Subset of the given result_ids already in the send-once ledger."""
-    ints = [int(i) for i in ids if i is not None]
-    if not ints:
-        return set()
-    inlist = ",".join(str(i) for i in ints)
-    rows = dlr.query(f"SELECT result_id FROM credit_pipeline_sent WHERE result_id IN ({inlist})")
-    return {int(r["result_id"]) for r in rows}
-
-
-def pipeline_claim(result_id, retailer_name):
-    """Insert a 'sending' ledger row. Returns True if newly claimed, False if the
-    result_id was already present (so a prior/parallel run owns it)."""
-    try:
-        dlr.execute(
-            "INSERT INTO credit_pipeline_sent (result_id, retailer_name, status, sent_at) "
-            f"VALUES (%(r)s, %(n)s, 'sending', {NOW})",
-            {"r": int(result_id), "n": (retailer_name or None)})
-        return True
-    except Exception:
-        return False
-
-
-def pipeline_finalize(result_id, dealer_id, lead_id, subsource, status, detail):
+def record_sent(dealers_id, result_id):
+    """Mark a trigger lead as sent — one row in dbo.sent (dealers.id, result_id,
+    timestamp). Idempotent: won't duplicate an existing (dealer, result)."""
     dlr.execute(
-        "UPDATE credit_pipeline_sent SET dealer_id=%(d)s, lead_id=%(l)s, "
-        f"subsource=%(ss)s, status=%(s)s, detail=%(det)s, sent_at={NOW} "
-        "WHERE result_id=%(r)s",
-        {"r": int(result_id), "d": dealer_id, "l": lead_id, "ss": subsource,
-         "s": status, "det": (detail or "")[:3900]})
+        "IF NOT EXISTS (SELECT 1 FROM dbo.sent WHERE dealer_id=%(d)s AND result_id=%(r)s) "
+        "INSERT INTO dbo.sent (result_id, dealer_id, created) VALUES (%(r)s, %(d)s, GETDATE())",
+        {"d": int(dealers_id), "r": int(result_id)})
