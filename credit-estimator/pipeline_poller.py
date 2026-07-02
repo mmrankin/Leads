@@ -46,13 +46,30 @@ SOURCE = "Credit Pipeline"
 BATCH = int(os.environ.get("CREDITPIPELINE_BATCH", "1000"))
 
 
+# Equifax streaming-trigger code -> human description, for when the payload
+# carries only trigger_id (the current feed sends no trigger_desc, and the
+# CreditPipeline.dbo.TriggerTypes lookup is empty). Add codes here as they appear.
+_TRIGGER_DESC = {
+    "AUPRQ": "Auto Prequalification Inquiry",
+}
+
+
 def _subsource(payload):
-    """Sub-source = matched_payload.trigger_desc (e.g. 'Auto Prequalification Inquiry')."""
+    """The trigger type we're sending — emitted as the ADF <id sequence="2">
+    source and <provider><service>. Prefer the payload's trigger_desc; else map
+    its trigger_id (e.g. AUPRQ -> 'Auto Prequalification Inquiry'); else fall
+    back to the raw trigger_id."""
     try:
         data = json.loads(payload) if payload else {}
     except (ValueError, TypeError):
         return None
-    return (data.get("trigger_desc") or "").strip() or None
+    desc = (data.get("trigger_desc") or "").strip()
+    if desc:
+        return desc
+    tid = (data.get("trigger_id") or "").strip()
+    if not tid:
+        return None
+    return _TRIGGER_DESC.get(tid, tid)
 
 
 def _phone(row):
