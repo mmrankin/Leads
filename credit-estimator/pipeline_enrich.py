@@ -10,6 +10,7 @@ param to VARCHAR restores the index seek (~0.2s) — hence the CAST(...) below.
 """
 
 import logging
+import os
 from datetime import date
 
 import dlrpro_db as dlr
@@ -17,6 +18,10 @@ import platform_db as pdb
 from pipeline_source import LINKED_SERVER, DB as CP_DB
 
 LOG = logging.getLogger("pipeline_enrich")
+
+# The Equifax curated DB on the same (10.1.4.8) linked server — appended
+# consumer email/phone, keyed by the same Consumer_ID as the credit view.
+EQUIFAX_DB = os.environ.get("CREDITPIPELINE_EQUIFAX_DB", "equifax")
 
 # Equifax consumer-credit view on the CreditPipeline linked server (10.1.4.8),
 # reached through the dlrPro connection via 4-part naming (same as the source
@@ -47,6 +52,59 @@ def match_equifax_consumer(consumer_id):
         LOG.warning("equifax view lookup failed (consumer_id=%s): %s", consumer_id, e)
         return None
     return rows[0] if rows else None
+
+
+# Appended email / phone from the Equifax consumer tables (instance/type 1).
+_EQUIFAX_EMAIL_SQL = """SELECT TOP 1 emailAddress
+  FROM [{ls}].[{db}].[dbo].[ConsumerEmails]
+  WHERE consumer_id = %(cid)s AND instance = 1"""
+_EQUIFAX_PHONE_SQL = """SELECT TOP 1 telephoneNumber
+  FROM [{ls}].[{db}].[dbo].[ConsumerTelephones]
+  WHERE consumer_id = %(cid)s AND telephoneTypeInstance = 1
+  ORDER BY TelephoneType_ID DESC"""
+
+
+def _digits(v):
+    """Digits-only string from a raw phone value, or None."""
+    if v is None:
+        return None
+    s = "".join(ch for ch in str(v) if ch.isdigit())
+    return s or None
+
+
+def _fmt_phone(v):
+    """###-###-#### for a 10-digit number; otherwise the digits as-is (or None)."""
+    d = _digits(v)
+    if d and len(d) == 10:
+        return f"{d[:3]}-{d[3:6]}-{d[6:]}"
+    return d
+
+
+def match_equifax_contact(consumer_id):
+    """Appended email + phone for this Consumer_ID from the Equifax consumer
+    tables (equifax..ConsumerEmails / ConsumerTelephones). Returns
+    {"email": str|None, "phone": <digits>|None}; empty when there's no
+    consumer_id or a lookup errors."""
+    out = {"email": None, "phone": None}
+    if consumer_id in (None, ""):
+        return out
+    try:
+        cid = int(consumer_id)
+    except (TypeError, ValueError):
+        return out
+    try:
+        rows = dlr.query(_EQUIFAX_EMAIL_SQL.format(ls=LINKED_SERVER, db=EQUIFAX_DB), {"cid": cid})
+        if rows:
+            out["email"] = (rows[0].get("emailAddress") or "").strip() or None
+    except Exception as e:
+        LOG.warning("equifax email lookup failed (consumer_id=%s): %s", consumer_id, e)
+    try:
+        rows = dlr.query(_EQUIFAX_PHONE_SQL.format(ls=LINKED_SERVER, db=EQUIFAX_DB), {"cid": cid})
+        if rows:
+            out["phone"] = _digits(rows[0].get("telephoneNumber"))
+    except Exception as e:
+        LOG.warning("equifax phone lookup failed (consumer_id=%s): %s", consumer_id, e)
+    return out
 
 # Benchmark used-car finance rate (%), cached daily in platform_settings. Used
 # only for the payment fallback (a matched record with a price but no rate/term).
@@ -203,6 +261,7 @@ def enrich_lead(lead, consumer_id=None):
     Returns the tbl_ownership row (or None)."""
     m = match_owner(lead.get("last_name"), lead.get("address"), lead.get("zip"))
     equifax = match_equifax_consumer(consumer_id)
+    contact = match_equifax_contact(consumer_id)   # appended email/phone (equifax..Consumer*)
 
     year = make = model = vin = ""
     mileage = 0.0
@@ -231,14 +290,21 @@ def enrich_lead(lead, consumer_id=None):
             if em:
                 lead["email"] = em
 
-    # Notes: vehicle identity + mileage (always from tbl_ownership), then the
-    # credit/finance block (Equifax view first, else the tbl_ownership estimate).
+    # Appended Equifax contact fills the ADF contact block when still empty.
+    if not (lead.get("email") or "").strip() and contact.get("email"):
+        lead["email"] = contact["email"]
+    if not (lead.get("phone") or "").strip() and contact.get("phone"):
+        lead["phone"] = contact["phone"]
+
+    # Notes: vehicle (VIN + year/make/model) + mileage (always from tbl_ownership),
+    # the credit/finance block (Equifax view first, else the tbl_ownership
+    # estimate), then the appended Equifax email/phone.
     lines = []
+    if vin:
+        lines.append(f"VIN: {vin}")
     veh = " ".join(p for p in (year, make, model) if p)
     if veh:
         lines.append(f"Vehicle: {veh}")
-    if vin:
-        lines.append(f"VIN: {vin}")
     if mileage > 0:
         est_mi = int(round(mileage)) + (1000 * _months_since(m.get("last_seen")) if m else 0)
         lines.append(f"Estimated Mileage: {est_mi:,}")
@@ -260,6 +326,11 @@ def enrich_lead(lead, consumer_id=None):
                 pay = estimate_payment(price, used_car_rate() + 2.0, 60)
             if pay > 0:
                 lines.append(f"Estimated Payment: ${pay:,}")
+
+    if contact.get("email"):
+        lines.append(f"Email Address Appended: {contact['email']}")
+    if contact.get("phone"):
+        lines.append(f"Phone Number Appended: {_fmt_phone(contact['phone'])}")
 
     if lines:
         block = "\n".join(lines)
