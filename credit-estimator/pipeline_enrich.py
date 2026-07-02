@@ -23,33 +23,40 @@ LOG = logging.getLogger("pipeline_enrich")
 # consumer email/phone, keyed by the same Consumer_ID as the credit view.
 EQUIFAX_DB = os.environ.get("CREDITPIPELINE_EQUIFAX_DB", "equifax")
 
-# Equifax consumer-credit view on the CreditPipeline linked server (10.1.4.8),
-# reached through the dlrPro connection via 4-part naming (same as the source
-# feed). Keyed by Consumer_ID (= match_result.consumer_id). Trade-1 = the
-# consumer's primary/most-relevant auto tradeline.
+# Equifax trigger view on the CreditPipeline linked server (10.1.4.8), reached
+# through the dlrPro connection via 4-part naming. Keyed by result_id (one row
+# per match_result — better coverage than consumer_id). Its "Estimated*" finance
+# columns are aliased back to the field names the notes builder already uses.
+# VIN/Make/Model/Year are usually NULL here (tbl_ownership fills the vehicle).
 _EQUIFAX_SQL = """SELECT TOP 1
-    FICO8, FICOAuto8, OpenTrade1, LoanTrade1, OpenDate1, AmountFinanced1,
-    RemainingBalance1, TermInMonths1, PaymentAmount1, EstimatedPayOffDate1,
-    NumberOfRemainingPayments1, AnnualPercentageRate1, PercentagePaid1, NumberOfLatePayments1
-  FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecord]
-  WHERE Consumer_ID = %(cid)s"""
+    fico_auto_8 AS FICOAuto8, fico_8 AS FICO8,
+    EstCurrentBalance AS RemainingBalance1,
+    EstimatedPayment AS PaymentAmount1,
+    EstimatedInterestRate AS AnnualPercentageRate1,
+    EstimatedNumberOfRemainingPayments AS NumberOfRemainingPayments1,
+    EstimatedTermInMonths AS TermInMonths1,
+    EstimatedAmountFinanced AS AmountFinanced1,
+    EstimatedOpenDate AS OpenDate1,
+    EstimatedPayOffDate AS EstimatedPayOffDate1,
+    VIN, Make, Model, Year
+  FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecordTriggers]
+  WHERE result_id = %(rid)s"""
 
 
-def match_equifax_consumer(consumer_id):
-    """The Equifax consumer-credit record for this Consumer_ID, or None. Returns
-    None (→ waterfall falls through to tbl_ownership) when there is no
-    consumer_id, it isn't an int, the lookup errors, or the consumer isn't in
-    the view."""
-    if consumer_id in (None, ""):
+def match_equifax_trigger(result_id):
+    """The Equifax trigger record for this match result_id, or None (→ the notes
+    fall back to the tbl_ownership finance estimate). Returns None when there's
+    no result_id, it isn't an int, the lookup errors, or the row isn't found."""
+    if result_id in (None, ""):
         return None
     try:
-        cid = int(consumer_id)
+        rid = int(result_id)
     except (TypeError, ValueError):
         return None
     try:
-        rows = dlr.query(_EQUIFAX_SQL.format(ls=LINKED_SERVER, db=CP_DB), {"cid": cid})
+        rows = dlr.query(_EQUIFAX_SQL.format(ls=LINKED_SERVER, db=CP_DB), {"rid": rid})
     except Exception as e:                       # never let a lookup block a send
-        LOG.warning("equifax view lookup failed (consumer_id=%s): %s", consumer_id, e)
+        LOG.warning("equifax trigger lookup failed (result_id=%s): %s", result_id, e)
         return None
     return rows[0] if rows else None
 
@@ -240,41 +247,48 @@ def _equifax_finance_lines(v):
     return lines
 
 
-def enrich_lead(lead, consumer_id=None):
-    """Enrich `lead` in place from two sources (a waterfall):
+def enrich_lead(lead, result_id=None, consumer_id=None):
+    """Enrich `lead` in place:
 
-      • tbl_ownership (matched by last_name / address / zip): vehicle year/make/
-        model, VIN, mileage, and phone/email when the lead has none. Always used
-        for these — the vehicle identity/contact always comes from here.
-      • the Equifax view (matched by consumer_id): the credit/finance notes
-        (credit score, loan balance, payment, APR, months remaining, …). PREFERRED
-        for those fields. When the record has no consumer_id or the consumer isn't
-        in the view, we fall through to the tbl_ownership finance estimate instead.
+      • the Equifax trigger view (matched by result_id): the credit/finance notes
+        (credit score, loan balance, payment, APR, payments remaining, …) — the
+        PREFERRED source. When there is no row, the notes fall back to the
+        tbl_ownership finance estimate.
+      • tbl_ownership (matched by last_name / address / zip): the vehicle
+        (year/make/model + VIN) and mileage, plus phone/email when the lead has
+        none. The trigger view's own vehicle is used when present (it's usually
+        NULL there), otherwise tbl_ownership.
+      • appended email/phone from the Equifax consumer tables (by consumer_id).
 
     Name/address stay as the caller resolved them (record → matched_payload JSON).
     Returns the tbl_ownership row (or None)."""
+    trig = match_equifax_trigger(result_id)
     m = match_owner(lead.get("last_name"), lead.get("address"), lead.get("zip"))
-    equifax = match_equifax_consumer(consumer_id)
     contact = match_equifax_contact(consumer_id)   # appended email/phone (equifax..Consumer*)
 
-    year = make = model = vin = ""
-    mileage = 0.0
+    # Vehicle: prefer the trigger view (usually NULL), else tbl_ownership.
+    def _first(*vals):
+        for val in vals:
+            s = str(val).strip() if val is not None else ""
+            if s:
+                return s
+        return ""
+    year = _first(trig.get("Year") if trig else None, m.get("year") if m else None)
+    make = _first(trig.get("Make") if trig else None, m.get("make") if m else None)
+    model = _first(trig.get("Model") if trig else None, m.get("model") if m else None)
+    vin = _first(trig.get("VIN") if trig else None, m.get("vin") if m else None)
+    mileage = _f(m.get("mileage")) if m else 0.0
+
+    # Vehicle -> the "used" sell/trade vehicle section of the ADF/XML.
+    if year:
+        lead["vehicle_year"] = year
+    if make:
+        lead["vehicle_make"] = make
+    if model:
+        lead["vehicle_model"] = model
+
+    # Contact -> fill only when the lead is missing it (tbl_ownership, then appended).
     if m:
-        year = str(m.get("year") or "").strip()
-        make = (m.get("make") or "").strip()
-        model = (m.get("model") or "").strip()
-        vin = (m.get("vin") or "").strip()
-        mileage = _f(m.get("mileage"))
-
-        # Vehicle -> the "used" sell/trade vehicle section of the ADF/XML.
-        if year:
-            lead["vehicle_year"] = year
-        if make:
-            lead["vehicle_make"] = make
-        if model:
-            lead["vehicle_model"] = model
-
-        # Contact -> fill only when the lead is missing it.
         if not (lead.get("phone") or "").strip():
             ph = _phone_str(m.get("primary_phone"))
             if ph:
@@ -283,16 +297,13 @@ def enrich_lead(lead, consumer_id=None):
             em = (m.get("email") or "").strip()
             if em:
                 lead["email"] = em
-
-    # Appended Equifax contact fills the ADF contact block when still empty.
     if not (lead.get("email") or "").strip() and contact.get("email"):
         lead["email"] = contact["email"]
     if not (lead.get("phone") or "").strip() and contact.get("phone"):
         lead["phone"] = contact["phone"]
 
-    # Notes: vehicle (VIN + year/make/model) + mileage (always from tbl_ownership),
-    # the credit/finance block (Equifax view first, else the tbl_ownership
-    # estimate), then the appended Equifax email/phone.
+    # Notes: vehicle (VIN + year/make/model) + mileage, the credit/finance block
+    # (trigger view first, else the tbl_ownership estimate), then appended contact.
     lines = []
     if vin:
         lines.append(f"VIN: {vin}")
@@ -303,8 +314,8 @@ def enrich_lead(lead, consumer_id=None):
         est_mi = int(round(mileage)) + (1000 * _months_since(m.get("last_seen")) if m else 0)
         lines.append(f"Estimated Mileage: {est_mi:,}")
 
-    if equifax:
-        lines.extend(_equifax_finance_lines(equifax))
+    if trig:
+        lines.extend(_equifax_finance_lines(trig))
     elif m:
         rate = _f(m.get("rate"))
         term = int(_f(m.get("term")))

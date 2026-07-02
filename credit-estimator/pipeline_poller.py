@@ -156,7 +156,8 @@ def send_lead(row):
     # the credit/finance fields, else panafax..tbl_ownership; tbl_ownership always
     # supplies the vehicle/VIN/mileage/phone/email. Best-effort.
     try:
-        pipeline_enrich.enrich_lead(lead, consumer_id=row.get("consumer_id"))
+        pipeline_enrich.enrich_lead(lead, result_id=row.get("result_id"),
+                                    consumer_id=row.get("consumer_id"))
     except Exception as e:
         LOG.warning("enrichment failed for result %s: %s",
                     row.get("result_id"), e)
