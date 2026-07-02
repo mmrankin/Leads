@@ -214,7 +214,7 @@ def _equifax_finance_lines(v):
     lines = []
     score = v.get("FICOAuto8") or v.get("FICO8")   # auto-enhanced FICO 8, else general FICO 8
     if score:
-        lines.append(f"Credit score: {int(score)}")
+        lines.append(f"Estimated Credit Score: {int(score)}")
     bal = _f(v.get("RemainingBalance1"))
     if bal > 0:
         lines.append(f"Loan balance: ${bal:,.0f}")
