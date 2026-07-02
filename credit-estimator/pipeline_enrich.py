@@ -237,12 +237,6 @@ def _equifax_finance_lines(v):
         lines.append(f"Estimated Loan Open Date: {v['OpenDate1']}")
     if v.get("EstimatedPayOffDate1"):
         lines.append(f"Estimated Payoff Date: {v['EstimatedPayOffDate1']}")
-    pct = _f(v.get("PercentagePaid1"))
-    if pct > 0:
-        lines.append(f"Estimated Percent Paid: {pct:.0f}%")
-    late = _int(v.get("NumberOfLatePayments1"))
-    if late:
-        lines.append(f"Estimated Late Payments: {late}")
     return lines
 
 
