@@ -172,6 +172,7 @@ FIELD_LABELS = {
 
 _TRIGGER_LEADS_SQL = """SELECT TOP {limit}
   c.first_name AS cr_first, c.last_name AS cr_last,
+  e.FirstName AS eq_first, e.LastName AS eq_last, m.consumer_id,
   r.retailer_name AS CPName, d.dealer_name AS ADFName,
   m.result_id, m.run_group_id, m.run_id, m.subscription_id, m.bucket_id,
   m.candidate_id, m.customer_record_id, m.retailer_id,
@@ -181,6 +182,7 @@ _TRIGGER_LEADS_SQL = """SELECT TOP {limit}
   s.id AS sent_id, CONVERT(varchar(19), s.created, 120) AS sent_at
 FROM [10.1.4.8].[CreditPipeline].[dbo].[match_result] m
 LEFT JOIN [10.1.4.8].[CreditPipeline].[dbo].[customer_record] c ON c.customer_record_id = m.customer_record_id
+LEFT JOIN [10.1.4.8].[CreditPipeline].[dbo].[vw_EquifaxConsumerRecord] e ON e.Consumer_ID = m.consumer_id
 LEFT JOIN [10.1.4.8].[CreditPipeline].[dbo].[retailer] r ON r.retailer_id = m.retailer_id
 LEFT JOIN dlrPro.dbo.dealers d ON d.dealer_id = r.retailer_code
 LEFT JOIN dlrPro.dbo.[sent] s ON d.id = s.dealer_id AND m.result_id = s.result_id
@@ -195,10 +197,9 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
     matching_dealer (d.dealer_name not null), sent_status = unsent|sent|all."""
     conds = []
     if matching_customer:
-        # "Has a customer name" from the best source: the dealer's matched
-        # customer_record OR the matched_payload trigger consumer (what the ADF sends).
-        conds.append("(c.last_name IS NOT NULL OR "
-                     "JSON_VALUE(CAST(m.matched_payload AS NVARCHAR(MAX)),'$.last_name') IS NOT NULL)")
+        # "Matching customer" = the consumer_id resolved to an Equifax consumer
+        # record (the definitive match).
+        conds.append("e.Consumer_ID IS NOT NULL")
     if matching_dealer:
         conds.append("d.dealer_name IS NOT NULL")
     if sent_status == "unsent":
@@ -221,11 +222,14 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
             payload = {}
             r["trigger"] = None
             r["payload_pretty"] = raw
-        # Best customer match: the dealer's matched customer_record, else the
-        # matched_payload trigger consumer (the same name the ADF/XML sends).
+        # Best customer match, in order: the dealer's matched customer_record,
+        # the Equifax consumer matched by consumer_id, then the matched_payload
+        # trigger consumer (the name the ADF/XML sends).
         cr = " ".join(x for x in (r.get("cr_first"), r.get("cr_last")) if x).strip()
+        eq = " ".join(x for x in (r.get("eq_first"), r.get("eq_last")) if x).strip()
         pl = " ".join(x for x in (payload.get("first_name"), payload.get("last_name")) if x).strip()
-        r["CustomerName"] = cr or pl or None
+        r["CustomerName"] = cr or eq or pl or None
+        r["customer_matched"] = bool(r.get("eq_last"))   # consumer_id -> Equifax view
     return rows
 
 
