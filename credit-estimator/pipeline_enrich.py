@@ -154,7 +154,7 @@ def _equifax_finance_lines(v):
     their current auto loan (trade 1: balance, payment, APR, months remaining,
     etc.). Only non-empty values are shown."""
     lines = []
-    score = v.get("FICO8") or v.get("FICOAuto8")   # general FICO 8, else auto FICO 8
+    score = v.get("FICOAuto8") or v.get("FICO8")   # auto-enhanced FICO 8, else general FICO 8
     if score:
         lines.append(f"Credit score: {int(score)}")
     bal = _f(v.get("RemainingBalance1"))
