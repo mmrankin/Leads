@@ -373,6 +373,7 @@ def save_grant():
         "valid_to": (request.form.get("valid_to") or "").strip(),
         "monthly_price": (request.form.get("monthly_price") or "").strip(),
         "per_lead_price": (request.form.get("per_lead_price") or "").strip(),
+        "max_leads_per_month": (request.form.get("max_leads_per_month") or "").strip(),
     }
     if not (data["dealer_id"] and data["product_code"]):
         flash("Dealer and product are required.", "error")

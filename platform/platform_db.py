@@ -45,6 +45,9 @@ def init_db():
     # Self-healing: the `source` column was added after the initial migration.
     dlr.execute("IF COL_LENGTH('products', 'source') IS NULL "
                 "ALTER TABLE products ADD source NVARCHAR(200) NULL")
+    # Per-grant monthly lead cap (Credit Pipeline); NULL -> DEFAULT_MAX_LEADS_PER_MONTH.
+    dlr.execute("IF COL_LENGTH('dealer_products', 'max_leads_per_month') IS NULL "
+                "ALTER TABLE dealer_products ADD max_leads_per_month INT NULL")
     for code, name, desc, source in DEFAULT_PRODUCTS:
         p = {"c": code, "n": name, "d": desc, "s": source}
         if dlr.one("SELECT 1 AS x FROM products WHERE product_code=%(c)s", p):
@@ -235,19 +238,21 @@ def list_grants(dealer_id=None):
 
 def upsert_grant(data):
     fields = ("dealer_id", "product_code", "valid_from", "valid_to",
-              "monthly_price", "per_lead_price")
+              "monthly_price", "per_lead_price", "max_leads_per_month")
     v = {k: (data.get(k) if data.get(k) not in ("",) else None) for k in fields}
     if dlr.one("SELECT 1 AS x FROM dealer_products WHERE dealer_id=%(dealer_id)s "
                "AND product_code=%(product_code)s", v):
         dlr.execute(
             "UPDATE dealer_products SET valid_from=%(valid_from)s, valid_to=%(valid_to)s, "
             "monthly_price=%(monthly_price)s, per_lead_price=%(per_lead_price)s, "
+            "max_leads_per_month=%(max_leads_per_month)s, "
             f"updated_at={NOW} WHERE dealer_id=%(dealer_id)s AND product_code=%(product_code)s", v)
     else:
         dlr.execute(
             "INSERT INTO dealer_products (dealer_id, product_code, valid_from, valid_to, "
-            "monthly_price, per_lead_price) VALUES (%(dealer_id)s, %(product_code)s, "
-            "%(valid_from)s, %(valid_to)s, %(monthly_price)s, %(per_lead_price)s)", v)
+            "monthly_price, per_lead_price, max_leads_per_month) VALUES (%(dealer_id)s, "
+            "%(product_code)s, %(valid_from)s, %(valid_to)s, %(monthly_price)s, "
+            "%(per_lead_price)s, %(max_leads_per_month)s)", v)
 
 
 def delete_grant(grant_id):
@@ -450,3 +455,30 @@ def record_sent(dealers_id, result_id):
         "IF NOT EXISTS (SELECT 1 FROM dbo.sent WHERE dealer_id=%(d)s AND result_id=%(r)s) "
         "INSERT INTO dbo.sent (result_id, dealer_id, created) VALUES (%(r)s, %(d)s, GETDATE())",
         {"d": int(dealers_id), "r": int(result_id)})
+
+
+# ----- Credit Pipeline monthly lead cap -----
+
+DEFAULT_MAX_LEADS_PER_MONTH = 10
+
+
+def pipeline_max_leads(dealer_id, on_date=None):
+    """Max Credit Pipeline leads/month for a dealer — the active CREDIT_PIPELINE
+    grant's max_leads_per_month, or DEFAULT_MAX_LEADS_PER_MONTH when unset."""
+    g = get_active_grant(dealer_id, PRODUCT_CREDIT_PIPELINE, on_date)
+    if g and g.get("max_leads_per_month") is not None:
+        try:
+            return int(g["max_leads_per_month"])
+        except (TypeError, ValueError):
+            pass
+    return DEFAULT_MAX_LEADS_PER_MONTH
+
+
+def sent_this_month(dealers_id):
+    """Count of Credit Pipeline leads recorded to a dealer (dealers.id) since the
+    first of the current calendar month."""
+    row = dlr.one(
+        "SELECT COUNT_BIG(*) AS c FROM dbo.sent WHERE dealer_id=%(d)s "
+        "AND created >= DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)",
+        {"d": int(dealers_id)})
+    return int(row["c"]) if row else 0

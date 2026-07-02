@@ -183,19 +183,39 @@ def run(dry_run=False):
         return
 
     counts = {}
+    month_sent = {}   # dealers.id -> Credit Pipeline leads already sent this month
+    max_cap = {}      # dealer_id  -> monthly cap
     for row in rows:
         ok, reason = eligible(row)
         if not ok:
             counts["skipped"] = counts.get("skipped", 0) + 1
             LOG.info("result %s (%s) -> skipped: %s", row["result_id"], row["dealer_id"], reason)
             continue
+
+        # Monthly per-dealer cap. Count this month's sends once per dealer, then
+        # track the running total locally as we send.
+        did, dcode = row["dealers_id"], row["dealer_id"]
+        if did not in month_sent:
+            month_sent[did] = pdb.sent_this_month(did)
+        if dcode not in max_cap:
+            max_cap[dcode] = pdb.pipeline_max_leads(dcode)
+        cap = max_cap[dcode]
+        if month_sent[did] >= cap:
+            counts["capped"] = counts.get("capped", 0) + 1
+            LOG.info("result %s (%s) -> skipped: monthly cap reached (%d/%d)",
+                     row["result_id"], dcode, month_sent[did], cap)
+            continue
+
         if dry_run:
             counts["dry_run"] = counts.get("dry_run", 0) + 1
-            LOG.info("result %s -> would send to %s <%s>",
-                     row["result_id"], row["dealer_id"], row.get("lead_email_address"))
+            LOG.info("result %s -> would send to %s <%s> (%d/%d this month)",
+                     row["result_id"], dcode, row.get("lead_email_address"), month_sent[did] + 1, cap)
+            month_sent[did] += 1
             continue
         status, detail, lead_id = send_lead(row)
         counts[status] = counts.get(status, 0) + 1
+        if status != "skipped_no_dealer":   # a send was recorded in the ledger
+            month_sent[did] += 1
         LOG.info("result %s -> %s (lead %s) %s", row["result_id"], status, lead_id, detail)
 
     LOG.info("Run complete (%s). Fetched %d: %s",
