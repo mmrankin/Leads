@@ -171,7 +171,8 @@ FIELD_LABELS = {
 # ----- Trigger Leads (CreditPipeline match_result, via the 10.1.4.8 linked server) -----
 
 _TRIGGER_LEADS_SQL = """SELECT TOP {limit}
-  c.last_name AS CustomerName, r.retailer_name AS CPName, d.dealer_name AS ADFName,
+  c.first_name AS cr_first, c.last_name AS cr_last,
+  r.retailer_name AS CPName, d.dealer_name AS ADFName,
   m.result_id, m.run_group_id, m.run_id, m.subscription_id, m.bucket_id,
   m.candidate_id, m.customer_record_id, m.retailer_id,
   CAST(m.matched_payload AS NVARCHAR(MAX)) AS matched_payload,
@@ -194,7 +195,10 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
     matching_dealer (d.dealer_name not null), sent_status = unsent|sent|all."""
     conds = []
     if matching_customer:
-        conds.append("c.last_name IS NOT NULL")
+        # "Has a customer name" from the best source: the dealer's matched
+        # customer_record OR the matched_payload trigger consumer (what the ADF sends).
+        conds.append("(c.last_name IS NOT NULL OR "
+                     "JSON_VALUE(CAST(m.matched_payload AS NVARCHAR(MAX)),'$.last_name') IS NOT NULL)")
     if matching_dealer:
         conds.append("d.dealer_name IS NOT NULL")
     if sent_status == "unsent":
@@ -214,8 +218,14 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
             r["trigger"] = (payload.get("trigger_desc") or "").strip() or None
             r["payload_pretty"] = json.dumps(payload, indent=2) if payload else raw
         except Exception:
+            payload = {}
             r["trigger"] = None
             r["payload_pretty"] = raw
+        # Best customer match: the dealer's matched customer_record, else the
+        # matched_payload trigger consumer (the same name the ADF/XML sends).
+        cr = " ".join(x for x in (r.get("cr_first"), r.get("cr_last")) if x).strip()
+        pl = " ".join(x for x in (payload.get("first_name"), payload.get("last_name")) if x).strip()
+        r["CustomerName"] = cr or pl or None
     return rows
 
 
