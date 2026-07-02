@@ -14,8 +14,39 @@ from datetime import date
 
 import dlrpro_db as dlr
 import platform_db as pdb
+from pipeline_source import LINKED_SERVER, DB as CP_DB
 
 LOG = logging.getLogger("pipeline_enrich")
+
+# Equifax consumer-credit view on the CreditPipeline linked server (10.1.4.8),
+# reached through the dlrPro connection via 4-part naming (same as the source
+# feed). Keyed by Consumer_ID (= match_result.consumer_id). Trade-1 = the
+# consumer's primary/most-relevant auto tradeline.
+_EQUIFAX_SQL = """SELECT TOP 1
+    FICO8, FICOAuto8, OpenTrade1, LoanTrade1, OpenDate1, AmountFinanced1,
+    RemainingBalance1, TermInMonths1, PaymentAmount1, EstimatedPayOffDate1,
+    NumberOfRemainingPayments1, AnnualPercentageRate1, PercentagePaid1, NumberOfLatePayments1
+  FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecord]
+  WHERE Consumer_ID = %(cid)s"""
+
+
+def match_equifax_consumer(consumer_id):
+    """The Equifax consumer-credit record for this Consumer_ID, or None. Returns
+    None (→ waterfall falls through to tbl_ownership) when there is no
+    consumer_id, it isn't an int, the lookup errors, or the consumer isn't in
+    the view."""
+    if consumer_id in (None, ""):
+        return None
+    try:
+        cid = int(consumer_id)
+    except (TypeError, ValueError):
+        return None
+    try:
+        rows = dlr.query(_EQUIFAX_SQL.format(ls=LINKED_SERVER, db=CP_DB), {"cid": cid})
+    except Exception as e:                       # never let a lookup block a send
+        LOG.warning("equifax view lookup failed (consumer_id=%s): %s", consumer_id, e)
+        return None
+    return rows[0] if rows else None
 
 # Benchmark used-car finance rate (%), cached daily in platform_settings. Used
 # only for the payment fallback (a matched record with a price but no rate/term).
@@ -111,63 +142,124 @@ def estimate_payment(price, annual_rate_pct, term_months):
     return int(round(m / 10.0) * 10)
 
 
-def enrich_lead(lead):
-    """Look up the owner's vehicle in tbl_ownership and enrich `lead` in place:
-    vehicle year/make/model (also drives the ADF <vehicle interest="sell">
-    block), phone/email when the lead has none, and an estimated-finance notes
-    block appended to comments. Returns the matched row, or None."""
-    m = match_owner(lead.get("last_name"), lead.get("address"), lead.get("zip"))
-    if not m:
+def _int(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
         return None
 
-    year = str(m.get("year") or "").strip()
-    make = (m.get("make") or "").strip()
-    model = (m.get("model") or "").strip()
-    vin = (m.get("vin") or "").strip()
-    mileage = _f(m.get("mileage"))
-    price = _f(m.get("price"))
-    rate = _f(m.get("rate"))
-    term = int(_f(m.get("term")))
 
-    # Vehicle -> the "used" sell/trade vehicle section of the ADF/XML.
-    if year:
-        lead["vehicle_year"] = year
-    if make:
-        lead["vehicle_make"] = make
-    if model:
-        lead["vehicle_model"] = model
+def _equifax_finance_lines(v):
+    """Notes lines from the Equifax view row — the consumer's credit score plus
+    their current auto loan (trade 1: balance, payment, APR, months remaining,
+    etc.). Only non-empty values are shown."""
+    lines = []
+    score = v.get("FICO8") or v.get("FICOAuto8")   # general FICO 8, else auto FICO 8
+    if score:
+        lines.append(f"Credit score: {int(score)}")
+    bal = _f(v.get("RemainingBalance1"))
+    if bal > 0:
+        lines.append(f"Loan balance: ${bal:,.0f}")
+    pay = _f(v.get("PaymentAmount1"))
+    if pay > 0:
+        lines.append(f"Payment: ${pay:,.0f}/mo")
+    apr = _f(v.get("AnnualPercentageRate1"))
+    if apr > 0:
+        lines.append(f"Interest rate (APR): {apr:.2f}%")
+    rem = _int(v.get("NumberOfRemainingPayments1"))
+    if rem:
+        lines.append(f"Months remaining: {rem}")
+    term = _int(v.get("TermInMonths1"))
+    if term:
+        lines.append(f"Loan term: {term} months")
+    amt = _f(v.get("AmountFinanced1"))
+    if amt > 0:
+        lines.append(f"Amount financed: ${amt:,.0f}")
+    if v.get("OpenDate1"):
+        lines.append(f"Loan opened: {v['OpenDate1']}")
+    if v.get("EstimatedPayOffDate1"):
+        lines.append(f"Est. payoff: {v['EstimatedPayOffDate1']}")
+    pct = _f(v.get("PercentagePaid1"))
+    if pct > 0:
+        lines.append(f"Percent paid: {pct:.0f}%")
+    late = _int(v.get("NumberOfLatePayments1"))
+    if late:
+        lines.append(f"Late payments: {late}")
+    return lines
 
-    # Contact -> fill only when the lead is missing it.
-    if not (lead.get("phone") or "").strip():
-        ph = _phone_str(m.get("primary_phone"))
-        if ph:
-            lead["phone"] = ph
-    if not (lead.get("email") or "").strip():
-        em = (m.get("email") or "").strip()
-        if em:
-            lead["email"] = em
 
-    # Notes block.
+def enrich_lead(lead, consumer_id=None):
+    """Enrich `lead` in place from two sources (a waterfall):
+
+      • tbl_ownership (matched by last_name / address / zip): vehicle year/make/
+        model, VIN, mileage, and phone/email when the lead has none. Always used
+        for these — the vehicle identity/contact always comes from here.
+      • the Equifax view (matched by consumer_id): the credit/finance notes
+        (credit score, loan balance, payment, APR, months remaining, …). PREFERRED
+        for those fields. When the record has no consumer_id or the consumer isn't
+        in the view, we fall through to the tbl_ownership finance estimate instead.
+
+    Name/address stay as the caller resolved them (record → matched_payload JSON).
+    Returns the tbl_ownership row (or None)."""
+    m = match_owner(lead.get("last_name"), lead.get("address"), lead.get("zip"))
+    equifax = match_equifax_consumer(consumer_id)
+
+    year = make = model = vin = ""
+    mileage = 0.0
+    if m:
+        year = str(m.get("year") or "").strip()
+        make = (m.get("make") or "").strip()
+        model = (m.get("model") or "").strip()
+        vin = (m.get("vin") or "").strip()
+        mileage = _f(m.get("mileage"))
+
+        # Vehicle -> the "used" sell/trade vehicle section of the ADF/XML.
+        if year:
+            lead["vehicle_year"] = year
+        if make:
+            lead["vehicle_make"] = make
+        if model:
+            lead["vehicle_model"] = model
+
+        # Contact -> fill only when the lead is missing it.
+        if not (lead.get("phone") or "").strip():
+            ph = _phone_str(m.get("primary_phone"))
+            if ph:
+                lead["phone"] = ph
+        if not (lead.get("email") or "").strip():
+            em = (m.get("email") or "").strip()
+            if em:
+                lead["email"] = em
+
+    # Notes: vehicle identity + mileage (always from tbl_ownership), then the
+    # credit/finance block (Equifax view first, else the tbl_ownership estimate).
     lines = []
     veh = " ".join(p for p in (year, make, model) if p)
     if veh:
         lines.append(f"Vehicle: {veh}")
     if vin:
         lines.append(f"VIN: {vin}")
-    if term > 0:
-        lines.append(f"Estimated term: {term}")
-    if rate > 0:
-        lines.append(f"Estimated rate: {rate:.1f}%")
     if mileage > 0:
-        est_mi = int(round(mileage)) + 1000 * _months_since(m.get("last_seen"))
+        est_mi = int(round(mileage)) + (1000 * _months_since(m.get("last_seen")) if m else 0)
         lines.append(f"Estimated Mileage: {est_mi:,}")
-    if price > 0:
-        if rate > 0 and term > 0:
-            pay = estimate_payment(price, rate, term)
-        else:                       # price but no rate/term -> 60mo @ benchmark+2pts
-            pay = estimate_payment(price, used_car_rate() + 2.0, 60)
-        if pay > 0:
-            lines.append(f"Estimated Payment: ${pay:,}")
+
+    if equifax:
+        lines.extend(_equifax_finance_lines(equifax))
+    elif m:
+        rate = _f(m.get("rate"))
+        term = int(_f(m.get("term")))
+        price = _f(m.get("price"))
+        if term > 0:
+            lines.append(f"Estimated term: {term}")
+        if rate > 0:
+            lines.append(f"Estimated rate: {rate:.1f}%")
+        if price > 0:
+            if rate > 0 and term > 0:
+                pay = estimate_payment(price, rate, term)
+            else:                       # price but no rate/term -> 60mo @ benchmark+2pts
+                pay = estimate_payment(price, used_car_rate() + 2.0, 60)
+            if pay > 0:
+                lines.append(f"Estimated Payment: ${pay:,}")
 
     if lines:
         block = "\n".join(lines)

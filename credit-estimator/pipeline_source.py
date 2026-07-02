@@ -21,7 +21,7 @@ DB = os.environ.get("CREDITPIPELINE_DB", "CreditPipeline")
 # record is LEFT-joined: when the customer_record_id doesn't exist, the poller
 # falls back to the matched_payload for the name/address. dealers_id = dealers.id.
 _FETCH_SQL = """SELECT TOP {limit}
-  m.result_id, m.matched_payload, m.consumer_zip,
+  m.result_id, m.matched_payload, m.consumer_zip, m.consumer_id,
   d.id AS dealers_id, d.dealer_id, d.dealer_name, d.lead_email_address,
   c.first_name, c.last_name, c.email_address,
   c.cell_phone, c.home_phone, c.work_phone,

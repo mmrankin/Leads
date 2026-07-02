@@ -135,12 +135,13 @@ def send_lead(row):
         "email_verdict": None, "email_score": None,
         "adf_xml": None, "email1_status": "pending", "email1_detail": None,
     }
-    # Enrich from the vehicle-owner record (panafax..tbl_ownership): vehicle +
-    # VIN, phone/email, and the estimated-finance notes block. Best-effort.
+    # Enrich the notes (waterfall): the Equifax credit view (by consumer_id) for
+    # the credit/finance fields, else panafax..tbl_ownership; tbl_ownership always
+    # supplies the vehicle/VIN/mileage/phone/email. Best-effort.
     try:
-        pipeline_enrich.enrich_lead(lead)
+        pipeline_enrich.enrich_lead(lead, consumer_id=row.get("consumer_id"))
     except Exception as e:
-        LOG.warning("ownership enrichment failed for result %s: %s",
+        LOG.warning("enrichment failed for result %s: %s",
                     row.get("result_id"), e)
     lead_id = db.insert_lead(lead)
     lead["id"] = lead_id
