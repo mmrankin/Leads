@@ -217,32 +217,32 @@ def _equifax_finance_lines(v):
         lines.append(f"Estimated Credit Score: {int(score)}")
     bal = _f(v.get("RemainingBalance1"))
     if bal > 0:
-        lines.append(f"Loan balance: ${bal:,.0f}")
+        lines.append(f"Estimated Loan Balance: ${bal:,.0f}")
     pay = _f(v.get("PaymentAmount1"))
     if pay > 0:
-        lines.append(f"Payment: ${pay:,.0f}/mo")
+        lines.append(f"Estimated Payment: ${pay:,.0f}/mo")
     apr = _f(v.get("AnnualPercentageRate1"))
     if apr > 0:
-        lines.append(f"Interest rate (APR): {apr:.2f}%")
+        lines.append(f"Estimated Interest Rate (APR): {apr:.2f}%")
     rem = _int(v.get("NumberOfRemainingPayments1"))
     if rem:
-        lines.append(f"Months remaining: {rem}")
+        lines.append(f"Estimated Payments Remaining: {rem}")
     term = _int(v.get("TermInMonths1"))
     if term:
-        lines.append(f"Loan term: {term} months")
+        lines.append(f"Estimated Loan Term: {term} months")
     amt = _f(v.get("AmountFinanced1"))
     if amt > 0:
-        lines.append(f"Amount financed: ${amt:,.0f}")
+        lines.append(f"Estimated Amount Financed: ${amt:,.0f}")
     if v.get("OpenDate1"):
-        lines.append(f"Loan opened: {v['OpenDate1']}")
+        lines.append(f"Estimated Loan Open Date: {v['OpenDate1']}")
     if v.get("EstimatedPayOffDate1"):
-        lines.append(f"Est. payoff: {v['EstimatedPayOffDate1']}")
+        lines.append(f"Estimated Payoff Date: {v['EstimatedPayOffDate1']}")
     pct = _f(v.get("PercentagePaid1"))
     if pct > 0:
-        lines.append(f"Percent paid: {pct:.0f}%")
+        lines.append(f"Estimated Percent Paid: {pct:.0f}%")
     late = _int(v.get("NumberOfLatePayments1"))
     if late:
-        lines.append(f"Late payments: {late}")
+        lines.append(f"Estimated Late Payments: {late}")
     return lines
 
 
