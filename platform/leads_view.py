@@ -195,7 +195,8 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
     """Rows from the CreditPipeline match_result feed joined to the ADF dealer and
     the sent ledger. Filters: matching_customer (c.last_name not null),
     matching_dealer (d.dealer_name not null), sent_status = unsent|sent|all."""
-    conds = []
+    # Never show rows with a blank consumer_id on match_result.
+    conds = ["m.consumer_id IS NOT NULL"]
     if matching_customer:
         # "Matching customer" = the consumer_id resolved to an Equifax consumer
         # record (the definitive match).
