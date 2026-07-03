@@ -32,18 +32,27 @@ LEFT JOIN [{ls}].[{db}].[dbo].[customer_record] c ON c.customer_record_id = m.cu
 JOIN [{ls}].[{db}].[dbo].[retailer] r ON r.retailer_id = m.retailer_id
 JOIN dlrPro.dbo.dealers d ON d.dealer_id = r.retailer_code
 LEFT JOIN dlrPro.dbo.[sent] s ON s.dealer_id = d.id AND s.result_id = m.result_id
-WHERE s.id IS NULL
+LEFT JOIN dlrPro.dbo.pipeline_skips sk ON sk.dealer_id = d.id AND sk.result_id = m.result_id
+WHERE s.id IS NULL {skip_cond}
 ORDER BY m.result_id ASC"""
+
+# A record with no phone/email is retried at most this many times, then dropped.
+MAX_NO_CONTACT_ATTEMPTS = 3
 
 
 def fetch_unsent(limit=1000):
-    """Return matched, not-yet-sent trigger-lead rows (list[dict])."""
-    return dlr.query(_FETCH_SQL.format(limit=int(limit), ls=LINKED_SERVER, db=DB))
+    """Matched, not-yet-sent trigger-lead rows, excluding records that already hit
+    the no-contact retry cap."""
+    sql = _FETCH_SQL.format(limit=int(limit), ls=LINKED_SERVER, db=DB,
+                            skip_cond="AND (sk.attempts IS NULL OR sk.attempts < %d)"
+                            % MAX_NO_CONTACT_ATTEMPTS)
+    return dlr.query(sql)
 
 
 def fetch_one(result_id):
-    """One matched, not-yet-sent row for a specific result_id, or None."""
-    sql = _FETCH_SQL.format(limit=1, ls=LINKED_SERVER, db=DB).replace(
-        "WHERE s.id IS NULL", "WHERE s.id IS NULL AND m.result_id = %(rid)s")
+    """One matched, not-yet-sent row for a specific result_id, or None. Ignores the
+    retry cap so an admin can always attempt a manual send."""
+    sql = _FETCH_SQL.format(limit=1, ls=LINKED_SERVER, db=DB,
+                            skip_cond="AND m.result_id = %(rid)s")
     rows = dlr.query(sql, {"rid": int(result_id)})
     return rows[0] if rows else None

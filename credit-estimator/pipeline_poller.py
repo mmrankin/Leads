@@ -163,9 +163,11 @@ def send_lead(row):
                     row.get("result_id"), e)
 
     # Only send records with a phone or email (from any source). No contact ->
-    # skip WITHOUT recording, so it's re-evaluated later if contact appears.
+    # bump the retry counter and skip (not recorded as sent). Once it reaches the
+    # cap the record is no longer fetched (pipeline_source).
     if not ((lead.get("phone") or "").strip() or (lead.get("email") or "").strip()):
-        return "skipped_no_contact", "no phone or email from any source", None
+        attempts = pdb.bump_no_contact(row["dealers_id"], row["result_id"])
+        return "skipped_no_contact", f"no phone or email (attempt {attempts})", None
 
     lead_id = db.insert_lead(lead)
     lead["id"] = lead_id

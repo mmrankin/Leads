@@ -410,6 +410,16 @@ def _ensure_pipeline_tables():
         " result_id BIGINT NULL,"
         " dealer_id BIGINT NULL,"
         " created SMALLDATETIME NULL)")
+    # No-contact retry counter (dealer, match result) -> attempts; capped so a
+    # record with no phone/email is only retried a few times.
+    dlr.execute(
+        "IF OBJECT_ID(N'dbo.pipeline_skips','U') IS NULL "
+        "CREATE TABLE dbo.pipeline_skips ("
+        " dealer_id BIGINT NOT NULL,"
+        " result_id BIGINT NOT NULL,"
+        " attempts INT NOT NULL,"
+        " last_at SMALLDATETIME NULL,"
+        " CONSTRAINT PK_pipeline_skips PRIMARY KEY (dealer_id, result_id))")
 
 
 def get_setting(key, default=None):
@@ -455,6 +465,26 @@ def record_sent(dealers_id, result_id):
         "IF NOT EXISTS (SELECT 1 FROM dbo.sent WHERE dealer_id=%(d)s AND result_id=%(r)s) "
         "INSERT INTO dbo.sent (result_id, dealer_id, created) VALUES (%(r)s, %(d)s, GETDATE())",
         {"d": int(dealers_id), "r": int(result_id)})
+
+
+# ----- Credit Pipeline no-contact retry counter (dbo.pipeline_skips) -----
+
+MAX_NO_CONTACT_ATTEMPTS = 3
+
+
+def bump_no_contact(dealers_id, result_id):
+    """Increment the no-contact attempt count for (dealer, match result); returns
+    the new count. Once it reaches MAX_NO_CONTACT_ATTEMPTS the poller stops
+    fetching the record (see pipeline_source)."""
+    v = {"d": int(dealers_id), "r": int(result_id)}
+    dlr.execute(
+        "IF EXISTS (SELECT 1 FROM dbo.pipeline_skips WHERE dealer_id=%(d)s AND result_id=%(r)s) "
+        "UPDATE dbo.pipeline_skips SET attempts = attempts + 1, last_at = GETDATE() "
+        "WHERE dealer_id=%(d)s AND result_id=%(r)s "
+        "ELSE INSERT INTO dbo.pipeline_skips (dealer_id, result_id, attempts, last_at) "
+        "VALUES (%(d)s, %(r)s, 1, GETDATE())", v)
+    row = dlr.one("SELECT attempts FROM dbo.pipeline_skips WHERE dealer_id=%(d)s AND result_id=%(r)s", v)
+    return int(row["attempts"]) if row else 1
 
 
 # ----- Credit Pipeline monthly lead cap -----
