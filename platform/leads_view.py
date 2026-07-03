@@ -278,37 +278,69 @@ def _equifax_contact_sets(consumer_ids):
     return em, ph
 
 
+def _own_row_flags(r):
+    """(has_email, has_phone, year, make) from an ownership query row."""
+    has_em = bool((r.get("email") or "").strip())
+    phone = str(r.get("primary_phone") or "").strip()
+    has_ph = len("".join(ch for ch in phone if ch.isdigit())) >= 7
+    return (has_em, has_ph, str(r.get("year") or "").strip(), (r.get("make") or "").strip())
+
+
 def _ownership_batch(keys):
-    """{(last_name, address, zip): (has_email, has_phone, year, make)} from
-    panafax..tbl_ownership for a set of keys, in ONE query — OUTER APPLY does a
-    zip-indexed TOP-1 (most-recent) seek per key (the table is ~340M rows). Params
-    CAST to varchar for the seek; single quotes escaped in the VALUES list."""
-    keys = sorted({(k[0].strip(), k[1].strip(), k[2].strip()) for k in keys
-                   if k[0] and k[1] and k[2] and k[0].strip() and k[1].strip() and k[2].strip()})
+    """{(last_name, first_name, address, zip): (has_email, has_phone, year, make)}
+    from panafax..tbl_ownership (~340M rows). Primary match = exact zip + last_name
+    LIKE first-5 + address1 LIKE first-8; for keys with no primary hit, a fallback
+    tries last_name + first_name + zip LIKE first-4. Batched via OUTER APPLY
+    (zip-indexed TOP-1 seek per key). Built by concatenation (no params), so the
+    LIKE '%' is a single literal; single quotes escaped in the VALUES list."""
+    keys = sorted({(str(k[0]).strip(), str(k[1]).strip(), str(k[2]).strip(), str(k[3]).strip())
+                   for k in keys})
     if not keys:
         return {}
     esc = lambda s: s.replace("'", "''")
-    values = ",".join("('%s','%s','%s')" % (esc(ln), esc(ad), esc(z)) for (ln, ad, z) in keys)
-    # Fuzzy match: exact zip, last_name LIKE first-5 + '%', address1 LIKE first-8 + '%'.
-    sql = ("SELECT k.ln, k.ad, k.z, o.email, o.primary_phone, o.[year], o.make "
-           "FROM (VALUES %s) k(ln, ad, z) "
-           "OUTER APPLY (SELECT TOP 1 email, primary_phone, [year], make "
-           "  FROM panafax..tbl_ownership WITH (NOLOCK) "
-           "  WHERE zip = CAST(k.z AS varchar(20)) "
-           "    AND last_name LIKE LEFT(CAST(k.ln AS varchar(100)), 5) + '%%' "
-           "    AND address1 LIKE LEFT(CAST(k.ad AS varchar(200)), 8) + '%%' "
-           "  ORDER BY last_seen DESC) o" % values)
     out = {}
-    try:
-        for r in dlr.query(sql):
-            has_em = bool((r.get("email") or "").strip())
-            phone = str(r.get("primary_phone") or "").strip()
-            has_ph = len("".join(ch for ch in phone if ch.isdigit())) >= 7
-            out[(r["ln"], r["ad"], r["z"])] = (
-                has_em, has_ph, str(r.get("year") or "").strip(), (r.get("make") or "").strip())
-    except Exception:
-        return {}
+
+    # Primary: batched OUTER APPLY — the exact-zip seek keeps it fast; the LIKE's
+    # only filter the zip's rows.
+    prim = [k for k in keys if k[0] and k[2] and k[3]]
+    if prim:
+        values = ",".join("('%s','%s','%s','%s')" % (esc(a), esc(b), esc(c), esc(d))
+                          for (a, b, c, d) in prim)
+        sql = ("SELECT k.ln, k.fn, k.ad, k.z, o.email, o.primary_phone, o.[year], o.make "
+               "FROM (VALUES " + values + ") k(ln, fn, ad, z) "
+               "OUTER APPLY (SELECT TOP 1 email, primary_phone, [year], make "
+               "  FROM panafax..tbl_ownership WITH (NOLOCK) "
+               "  WHERE zip = CAST(k.z AS varchar(20)) "
+               "    AND last_name LIKE LEFT(CAST(k.ln AS varchar(100)), 5) + '%' "
+               "    AND address1 LIKE LEFT(CAST(k.ad AS varchar(200)), 8) + '%' "
+               "  ORDER BY last_seen DESC) o")
+        try:
+            for r in dlr.query(sql):
+                out[(r["ln"], r["fn"], r["ad"], r["z"])] = _own_row_flags(r)
+        except Exception:
+            pass
+
+    # Fallback for keys the primary didn't match: last + first name + zip prefix (4).
+    # Done per-row with a parameterized query so the zip-prefix LIKE is a literal
+    # (sargable seek) — a correlated APPLY with a dynamic prefix can't use the index.
+    for k in keys:
+        if not (k[0] and k[1] and k[3]) or any(out.get(k, ())):
+            continue
+        try:
+            rows = dlr.query(_OWN_FALLBACK_ONE_SQL, {"l": k[0], "f": k[1], "z": k[3]})
+            if rows:
+                out[k] = _own_row_flags(rows[0])
+        except Exception:
+            pass
     return out
+
+
+_OWN_FALLBACK_ONE_SQL = ("SELECT TOP 1 email, primary_phone, [year], make "
+    "FROM panafax..tbl_ownership WITH (NOLOCK) "
+    "WHERE last_name = CAST(%(l)s AS varchar(100)) "
+    "AND first_name = CAST(%(f)s AS varchar(100)) "
+    "AND zip LIKE LEFT(CAST(%(z)s AS varchar(20)), 4) + '%%' "
+    "ORDER BY last_seen DESC")
 
 
 # Per-result_id cache of (has_email, has_phone, veh). These derive from immutable
@@ -328,12 +360,13 @@ def _annotate_contact_flags(rows):
     if todo:
         tmap = _trigger_contact_map([r.get("result_id") for r in todo])
         em_cids, ph_cids = _equifax_contact_sets([r.get("consumer_id") for r in todo])
-        omap = _ownership_batch([(r.get("_ln") or "", r.get("_addr") or "", r.get("_zip") or "")
-                                 for r in todo])
+        omap = _ownership_batch([(r.get("_ln") or "", r.get("_fn") or "",
+                                  r.get("_addr") or "", r.get("_zip") or "") for r in todo])
         for r in todo:
             t_em, t_ph = tmap.get(r.get("result_id"), (False, False))
-            o_em, o_ph, yr, mk = omap.get(((r.get("_ln") or "").strip(), (r.get("_addr") or "").strip(),
-                                           (r.get("_zip") or "").strip()), (False, False, "", ""))
+            o_em, o_ph, yr, mk = omap.get(((r.get("_ln") or "").strip(), (r.get("_fn") or "").strip(),
+                                           (r.get("_addr") or "").strip(), (r.get("_zip") or "").strip()),
+                                          (False, False, "", ""))
             _TRIG_CONTACT_CACHE[r.get("result_id")] = (
                 t_em or (r.get("consumer_id") in em_cids) or o_em,
                 t_ph or (r.get("consumer_id") in ph_cids) or o_ph,
@@ -387,6 +420,7 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
         r["customer_matched"] = bool(r.get("eq_last"))   # consumer_id -> Equifax view
         # Stashed for the tbl_ownership contact check (source 3).
         r["_ln"] = (r.get("cr_last") or r.get("eq_last") or payload.get("last_name") or "").strip()
+        r["_fn"] = (r.get("cr_first") or r.get("eq_first") or payload.get("first_name") or "").strip()
         r["_addr"] = (payload.get("address_line_1") or "").strip()
         r["_zip"] = (r.get("consumer_zip") or payload.get("consumer_zip") or "").strip()
     _annotate_contact_flags(rows)

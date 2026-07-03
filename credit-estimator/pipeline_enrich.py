@@ -155,6 +155,15 @@ _OWNERSHIP_SQL = """SELECT TOP 1
     AND address1 LIKE LEFT(CAST(%(a)s AS varchar(200)), 8) + '%%'
   ORDER BY last_seen DESC OPTION (MAXDOP 2)"""
 
+# Fallback when the address match misses: last + first name, zip prefix (first 4).
+_OWNERSHIP_FALLBACK_SQL = """SELECT TOP 1
+    year, make, model, vin, mileage, price, rate, term, primary_phone, email, last_seen
+  FROM panafax..tbl_ownership WITH (NOLOCK)
+  WHERE last_name = CAST(%(l)s AS varchar(100))
+    AND first_name = CAST(%(f)s AS varchar(100))
+    AND zip LIKE LEFT(CAST(%(z)s AS varchar(20)), 4) + '%%'
+  ORDER BY last_seen DESC OPTION (MAXDOP 2)"""
+
 # Average finance rate for recently-sold used vehicles — the "current used-car
 # rate from panasight". Heavy (~45s), so it runs at most once a day (see below).
 _BENCHMARK_SQL = """SELECT AVG(CAST(NULLIF(rate,0) AS float)) AS avg_rate
@@ -171,20 +180,29 @@ def _f(v):
         return 0.0
 
 
-def match_owner(last_name, address, zip_code):
-    """Most-recent tbl_ownership row for a fuzzy match — exact zip, last_name
-    LIKE first-5 + '%', address1 LIKE first-8 + '%' — or None."""
+def match_owner(last_name, address, zip_code, first_name=None):
+    """Most-recent tbl_ownership row. Primary: exact zip + last_name LIKE first-5
+    + address1 LIKE first-8. If that misses and a first name is given, fall back
+    to last_name + first_name + zip LIKE first-4. Returns the row, or None."""
     ln = (last_name or "").strip()
     ad = (address or "").strip()
     z = (zip_code or "").strip()
-    if not (ln and ad and z):
-        return None
-    try:
-        rows = dlr.query(_OWNERSHIP_SQL, {"z": z, "a": ad, "l": ln})
-    except Exception as e:                       # never let a lookup block a send
-        LOG.warning("ownership lookup failed (%s / %s / %s): %s", ln, ad, z, e)
-        return None
-    return rows[0] if rows else None
+    fn = (first_name or "").strip()
+    if ln and ad and z:
+        try:
+            rows = dlr.query(_OWNERSHIP_SQL, {"z": z, "a": ad, "l": ln})
+            if rows:
+                return rows[0]
+        except Exception as e:                   # never let a lookup block a send
+            LOG.warning("ownership primary lookup failed (%s / %s / %s): %s", ln, ad, z, e)
+    if ln and fn and z:
+        try:
+            rows = dlr.query(_OWNERSHIP_FALLBACK_SQL, {"z": z, "f": fn, "l": ln})
+            if rows:
+                return rows[0]
+        except Exception as e:
+            LOG.warning("ownership fallback lookup failed (%s / %s / %s): %s", ln, fn, z, e)
+    return None
 
 
 def _months_since(d):
@@ -291,7 +309,8 @@ def enrich_lead(lead, result_id=None, consumer_id=None):
     Name/address stay as the caller resolved them (record → matched_payload JSON).
     Returns the tbl_ownership row (or None)."""
     trig = match_equifax_trigger(result_id)
-    m = match_owner(lead.get("last_name"), lead.get("address"), lead.get("zip"))
+    m = match_owner(lead.get("last_name"), lead.get("address"), lead.get("zip"),
+                    lead.get("first_name"))
     contact = match_equifax_contact(consumer_id)   # appended email/phone (equifax..Consumer*)
 
     # Vehicle: prefer the trigger view (usually NULL), else tbl_ownership.
