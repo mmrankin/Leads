@@ -512,3 +512,13 @@ def sent_this_month(dealers_id):
         "AND created >= DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)",
         {"d": int(dealers_id)})
     return int(row["c"]) if row else 0
+
+
+def sent_today(dealers_id):
+    """Count of Credit Pipeline leads recorded to a dealer (dealers.id) since
+    midnight today (server local time)."""
+    row = dlr.one(
+        "SELECT COUNT_BIG(*) AS c FROM dbo.sent WHERE dealer_id=%(d)s "
+        "AND created >= CAST(GETDATE() AS date)",
+        {"d": int(dealers_id)})
+    return int(row["c"]) if row else 0

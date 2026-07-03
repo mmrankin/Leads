@@ -15,10 +15,12 @@ Usage:
     python pipeline_poller.py --dry-run   # resolve + log only; never send/store
 """
 
+import calendar
 import json
 import logging
 import os
 import sys
+from datetime import date
 
 try:
     from dotenv import load_dotenv
@@ -191,8 +193,15 @@ def run(dry_run=False):
         LOG.info("No matched, unsent trigger leads.")
         return
 
+    # Days left in the current month, counting today — used to spread each
+    # dealer's monthly max across the remaining days.
+    today = date.today()
+    days_left = calendar.monthrange(today.year, today.month)[1] - today.day + 1
+
     counts = {}
     month_sent = {}   # dealers.id -> Credit Pipeline leads already sent this month
+    today_sent = {}   # dealers.id -> Credit Pipeline leads already sent today
+    daily_cap = {}    # dealers.id -> today's paced allowance
     max_cap = {}      # dealer_id  -> monthly cap
     for row in rows:
         ok, reason = eligible(row)
@@ -201,30 +210,50 @@ def run(dry_run=False):
             LOG.info("result %s (%s) -> skipped: %s", row["result_id"], row["dealer_id"], reason)
             continue
 
-        # Monthly per-dealer cap. Count this month's sends once per dealer, then
-        # track the running total locally as we send.
+        # Per-dealer caps. Count this month's and today's sends once per dealer,
+        # then track the running totals locally as we send.
         did, dcode = row["dealers_id"], row["dealer_id"]
-        if did not in month_sent:
-            month_sent[did] = pdb.sent_this_month(did)
         if dcode not in max_cap:
             max_cap[dcode] = pdb.pipeline_max_leads(dcode)
         cap = max_cap[dcode]
+        if did not in month_sent:
+            month_sent[did] = pdb.sent_this_month(did)
+            today_sent[did] = pdb.sent_today(did)
+            # Spread the remaining monthly allotment evenly over the days left so
+            # a dealer's whole month can't go out on day one. Base it on sends
+            # made BEFORE today (month_sent minus today's) so the day's allowance
+            # stays fixed as today_sent climbs toward it. ceil, floored at 0:
+            # e.g. 300/month, 30 days left -> 10/day; 0 sent with 20 days left -> 15/day.
+            before_today = month_sent[did] - today_sent[did]
+            daily_cap[did] = max(0, -(-(cap - before_today) // days_left))
+
+        # Monthly cap: hard ceiling for the calendar month.
         if month_sent[did] >= cap:
             counts["capped"] = counts.get("capped", 0) + 1
             LOG.info("result %s (%s) -> skipped: monthly cap reached (%d/%d)",
                      row["result_id"], dcode, month_sent[did], cap)
             continue
 
+        # Daily cap: don't exceed today's paced allowance.
+        if today_sent[did] >= daily_cap[did]:
+            counts["daily_capped"] = counts.get("daily_capped", 0) + 1
+            LOG.info("result %s (%s) -> skipped: daily cap reached (%d/%d today; %d/%d month)",
+                     row["result_id"], dcode, today_sent[did], daily_cap[did], month_sent[did], cap)
+            continue
+
         if dry_run:
             counts["dry_run"] = counts.get("dry_run", 0) + 1
-            LOG.info("result %s -> would send to %s <%s> (%d/%d this month)",
-                     row["result_id"], dcode, row.get("lead_email_address"), month_sent[did] + 1, cap)
+            LOG.info("result %s -> would send to %s <%s> (%d/%d today; %d/%d month)",
+                     row["result_id"], dcode, row.get("lead_email_address"),
+                     today_sent[did] + 1, daily_cap[did], month_sent[did] + 1, cap)
             month_sent[did] += 1
+            today_sent[did] += 1
             continue
         status, detail, lead_id = send_lead(row)
         counts[status] = counts.get(status, 0) + 1
         if status not in ("skipped_no_dealer", "skipped_no_contact"):   # a send was recorded
             month_sent[did] += 1
+            today_sent[did] += 1
         LOG.info("result %s -> %s (lead %s) %s", row["result_id"], status, lead_id, detail)
 
     LOG.info("Run complete (%s). Fetched %d: %s",
