@@ -454,7 +454,7 @@ _CP_LS = "[10.1.4.8].[CreditPipeline].[dbo]"
 # "estimated" credit/loan value present (the Estimated* columns).
 _FUNNEL_AGG_SQL = ("""SELECT
   COUNT(*) AS total_triggers,
-  SUM(CASE WHEN d.dealer_name IS NOT NULL THEN 1 ELSE 0 END) AS matched_dealer,
+  SUM(CASE WHEN m.consumer_id IS NOT NULL AND d.dealer_name IS NOT NULL THEN 1 ELSE 0 END) AS matched_dealer,
   SUM(CASE WHEN TRY_CAST(t.fico_auto_8 AS int) > 0
             OR TRY_CAST(t.fico_8 AS int) > 0 THEN 1 ELSE 0 END) AS has_score,
   SUM(CASE WHEN TRY_CAST(t.EstCurrentBalance AS float) > 0
