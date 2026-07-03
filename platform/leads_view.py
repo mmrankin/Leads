@@ -190,6 +190,113 @@ LEFT JOIN dlrPro.dbo.[sent] s ON d.id = s.dealer_id AND m.result_id = s.result_i
 ORDER BY m.result_id ASC"""
 
 
+def _has_text(*vals):
+    return any((str(v).strip() if v is not None else "") for v in vals)
+
+
+def _trigger_contact_map(result_ids):
+    """result_id -> (has_email, has_phone) from the trigger view's own contact
+    columns (source 1). One batched query."""
+    ids = ",".join(str(int(x)) for x in result_ids if x is not None)
+    if not ids:
+        return {}
+    out = {}
+    try:
+        rows = dlr.query(
+            "SELECT result_id, Email, CellPhone, HomePhone, WorkPhone, AppendedEmail, AppendedPhone "
+            "FROM [10.1.4.8].[CreditPipeline].[dbo].[vw_EquifaxConsumerRecordTriggers] "
+            "WHERE result_id IN (%s)" % ids)
+    except Exception:
+        return {}
+    for r in rows:
+        out[r["result_id"]] = (
+            _has_text(r.get("Email"), r.get("AppendedEmail")),
+            _has_text(r.get("CellPhone"), r.get("HomePhone"), r.get("WorkPhone"), r.get("AppendedPhone")),
+        )
+    return out
+
+
+def _equifax_contact_sets(consumer_ids):
+    """(cids-with-email, cids-with-phone) from equifax..Consumer* (source 2).
+    Two batched queries."""
+    ids = ",".join(str(int(x)) for x in consumer_ids if x)
+    if not ids:
+        return set(), set()
+    try:
+        em = {r["consumer_id"] for r in dlr.query(
+            "SELECT DISTINCT consumer_id FROM [10.1.4.8].equifax.dbo.ConsumerEmails "
+            "WHERE consumer_id IN (%s) AND NULLIF(LTRIM(RTRIM(emailAddress)),'') IS NOT NULL" % ids)}
+        ph = {r["consumer_id"] for r in dlr.query(
+            "SELECT DISTINCT consumer_id FROM [10.1.4.8].equifax.dbo.ConsumerTelephones "
+            "WHERE consumer_id IN (%s) AND NULLIF(LTRIM(RTRIM(telephoneNumber)),'') IS NOT NULL" % ids)}
+    except Exception:
+        return set(), set()
+    return em, ph
+
+
+def _ownership_batch(keys):
+    """{(last_name, address, zip): (has_email, has_phone, year, make)} from
+    panafax..tbl_ownership for a set of keys, in ONE query — OUTER APPLY does a
+    zip-indexed TOP-1 (most-recent) seek per key (the table is ~340M rows). Params
+    CAST to varchar for the seek; single quotes escaped in the VALUES list."""
+    keys = sorted({(k[0].strip(), k[1].strip(), k[2].strip()) for k in keys
+                   if k[0] and k[1] and k[2] and k[0].strip() and k[1].strip() and k[2].strip()})
+    if not keys:
+        return {}
+    esc = lambda s: s.replace("'", "''")
+    values = ",".join("('%s','%s','%s')" % (esc(ln), esc(ad), esc(z)) for (ln, ad, z) in keys)
+    sql = ("SELECT k.ln, k.ad, k.z, o.email, o.primary_phone, o.[year], o.make "
+           "FROM (VALUES %s) k(ln, ad, z) "
+           "OUTER APPLY (SELECT TOP 1 email, primary_phone, [year], make "
+           "  FROM panafax..tbl_ownership WITH (NOLOCK) "
+           "  WHERE zip = CAST(k.z AS varchar(20)) AND address1 = CAST(k.ad AS varchar(200)) "
+           "  AND last_name = CAST(k.ln AS varchar(100)) ORDER BY last_seen DESC) o" % values)
+    out = {}
+    try:
+        for r in dlr.query(sql):
+            has_em = bool((r.get("email") or "").strip())
+            phone = str(r.get("primary_phone") or "").strip()
+            has_ph = len("".join(ch for ch in phone if ch.isdigit())) >= 7
+            out[(r["ln"], r["ad"], r["z"])] = (
+                has_em, has_ph, str(r.get("year") or "").strip(), (r.get("make") or "").strip())
+    except Exception:
+        return {}
+    return out
+
+
+# Per-result_id cache of (has_email, has_phone, veh). These derive from immutable
+# source data (the match record + Equifax + tbl_ownership), so once computed for a
+# result_id they never change — cache for the process lifetime. Only the first page
+# load pays the (heavy) tbl_ownership cost; later loads only resolve new rows.
+_TRIG_CONTACT_CACHE = {}
+
+
+def _annotate_contact_flags(rows):
+    """Set r['has_phone']/r['has_email'] and r['veh'] (year + make) per row from:
+    (1) the trigger view, (2) equifax..Consumer* by consumer_id, (3) tbl_ownership
+    (which also provides the vehicle). Batched, and cached per result_id."""
+    if not rows:
+        return
+    todo = [r for r in rows if r.get("result_id") not in _TRIG_CONTACT_CACHE]
+    if todo:
+        tmap = _trigger_contact_map([r.get("result_id") for r in todo])
+        em_cids, ph_cids = _equifax_contact_sets([r.get("consumer_id") for r in todo])
+        omap = _ownership_batch([(r.get("_ln") or "", r.get("_addr") or "", r.get("_zip") or "")
+                                 for r in todo])
+        for r in todo:
+            t_em, t_ph = tmap.get(r.get("result_id"), (False, False))
+            o_em, o_ph, yr, mk = omap.get(((r.get("_ln") or "").strip(), (r.get("_addr") or "").strip(),
+                                           (r.get("_zip") or "").strip()), (False, False, "", ""))
+            _TRIG_CONTACT_CACHE[r.get("result_id")] = (
+                t_em or (r.get("consumer_id") in em_cids) or o_em,
+                t_ph or (r.get("consumer_id") in ph_cids) or o_ph,
+                " ".join(p for p in (yr, mk) if p),
+            )
+    for r in rows:
+        r["has_email"], r["has_phone"], r["veh"] = _TRIG_CONTACT_CACHE.get(
+            r.get("result_id"), (False, False, ""))
+
+
 def trigger_leads(matching_customer=False, matching_dealer=False,
                   sent_status="unsent", limit=1000):
     """Rows from the CreditPipeline match_result feed joined to the ADF dealer and
@@ -231,6 +338,11 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
         pl = " ".join(x for x in (payload.get("first_name"), payload.get("last_name")) if x).strip()
         r["CustomerName"] = cr or eq or pl or None
         r["customer_matched"] = bool(r.get("eq_last"))   # consumer_id -> Equifax view
+        # Stashed for the tbl_ownership contact check (source 3).
+        r["_ln"] = (r.get("cr_last") or r.get("eq_last") or payload.get("last_name") or "").strip()
+        r["_addr"] = (payload.get("address_line_1") or "").strip()
+        r["_zip"] = (r.get("consumer_zip") or payload.get("consumer_zip") or "").strip()
+    _annotate_contact_flags(rows)
     return rows
 
 
