@@ -304,6 +304,12 @@ def leads():
                            dealers={d["dealer_id"]: d["dealer_name"] for d in pdb.list_dealers()})
 
 
+@app.route("/leads/volume")
+@require_login
+def lead_volume():
+    return render_template("volume.html", rows=leads_view.pipeline_volume())
+
+
 @app.route("/trigger-leads")
 @require_login
 def trigger_leads():

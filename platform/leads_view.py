@@ -4,9 +4,53 @@ All three lead types now live in dlrPro; this reads them and normalizes rows
 into a common shape so the admin can browse them in one place.
 """
 
+import calendar
 import json
+from datetime import date, timedelta
 
 import dlrpro_db as dlr
+
+
+# ----- Credit Pipeline volume report (per-dealer counts from the dbo.sent ledger) -----
+
+_VOLUME_SQL = """SELECT d.dealer_id, d.dealer_name, dp.max_leads_per_month,
+  SUM(CASE WHEN s.created >= %(lm)s AND s.created < %(tm)s THEN 1 ELSE 0 END) AS last_month,
+  SUM(CASE WHEN s.created >= %(tm)s THEN 1 ELSE 0 END) AS this_month,
+  SUM(CASE WHEN s.created >= %(yst)s AND s.created < %(td)s THEN 1 ELSE 0 END) AS yesterday,
+  SUM(CASE WHEN s.created >= %(td)s THEN 1 ELSE 0 END) AS today
+FROM dlrPro.dbo.dealers d
+JOIN dlrPro.dbo.dealer_products dp ON dp.dealer_id = d.dealer_id AND dp.product_code = 'CREDIT_PIPELINE'
+LEFT JOIN dlrPro.dbo.[sent] s ON s.dealer_id = d.id
+GROUP BY d.dealer_id, d.dealer_name, dp.max_leads_per_month
+ORDER BY d.dealer_name"""
+
+_DEFAULT_MAX_LEADS = 10
+
+
+def pipeline_volume():
+    """Per-dealer Credit Pipeline lead volume from the dbo.sent ledger: last
+    month, this month, yesterday, today, plus a month-end projection ("tracking")
+    at the current pace and the requested daily volume (max_leads_per_month / days
+    in the month)."""
+    today = date.today()
+    tm = today.replace(day=1)                       # first of this month
+    lm = (tm - timedelta(days=1)).replace(day=1)    # first of last month
+    yst = today - timedelta(days=1)
+    try:
+        rows = dlr.query(_VOLUME_SQL, {"td": today.isoformat(), "yst": yst.isoformat(),
+                                       "tm": tm.isoformat(), "lm": lm.isoformat()})
+    except Exception:
+        return []
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    dom = today.day
+    for r in rows:
+        mx = r.get("max_leads_per_month")
+        mx = int(mx) if mx is not None else _DEFAULT_MAX_LEADS
+        r["max_leads_per_month"] = mx
+        this_month = int(r.get("this_month") or 0)
+        r["tracking"] = round(this_month / dom * days_in_month) if dom else this_month
+        r["requested_daily"] = round(mx / days_in_month, 1)
+    return rows
 
 
 def _fetch(table, dealer_id, limit):
