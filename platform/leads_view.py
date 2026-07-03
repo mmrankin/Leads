@@ -445,6 +445,174 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
     return rows
 
 
+# ----- Trigger Funnel report (Equifax trigger -> matched -> enriched) -----
+
+_CP_LS = "[10.1.4.8].[CreditPipeline].[dbo]"
+
+# Fast single-pass counts for the funnel stages that are pure trigger/join facts:
+# total triggers, matched to one of our dealers, a credit score present, and any
+# "estimated" credit/loan value present (the Estimated* columns).
+_FUNNEL_AGG_SQL = ("""SELECT
+  COUNT(*) AS total_triggers,
+  SUM(CASE WHEN d.dealer_name IS NOT NULL THEN 1 ELSE 0 END) AS matched_dealer,
+  SUM(CASE WHEN TRY_CAST(t.fico_auto_8 AS int) > 0
+            OR TRY_CAST(t.fico_8 AS int) > 0 THEN 1 ELSE 0 END) AS has_score,
+  SUM(CASE WHEN TRY_CAST(t.EstCurrentBalance AS float) > 0
+            OR TRY_CAST(t.EstimatedPayment AS float) > 0
+            OR TRY_CAST(t.EstimatedInterestRate AS float) > 0
+            OR TRY_CAST(t.EstimatedAmountFinanced AS float) > 0
+            OR TRY_CAST(t.EstimatedNumberOfRemainingPayments AS int) > 0
+            OR TRY_CAST(t.EstimatedTermInMonths AS int) > 0 THEN 1 ELSE 0 END) AS has_estimate
+FROM {cp}.[match_result] m
+LEFT JOIN {cp}.[vw_EquifaxConsumerRecordTriggers] t ON t.result_id = m.result_id
+LEFT JOIN {cp}.[retailer] r ON r.retailer_id = m.retailer_id
+LEFT JOIN dlrPro.dbo.dealers d ON d.dealer_id = r.retailer_code
+WHERE m.returned_at >= %(start)s""").format(cp=_CP_LS)
+
+# Identity rows for the enriched stages (phone/email/vehicle). Name/address/zip
+# come from customer_record when present, else the matched_payload JSON.
+_FUNNEL_ROWS_SQL = ("""SELECT TOP 5000
+  m.result_id, m.consumer_id, m.consumer_zip,
+  c.first_name AS cr_first, c.last_name AS cr_last,
+  CAST(m.matched_payload AS NVARCHAR(MAX)) AS matched_payload
+FROM {cp}.[match_result] m
+LEFT JOIN {cp}.[customer_record] c ON c.customer_record_id = m.customer_record_id
+WHERE m.returned_at >= %(start)s
+ORDER BY m.result_id ASC""").format(cp=_CP_LS)
+
+_MATCHED_BY_DAY_SQL = ("""SELECT CONVERT(varchar(10), m.returned_at, 120) AS day, COUNT(*) AS n
+FROM {cp}.[match_result] m
+JOIN {cp}.[retailer] r ON r.retailer_id = m.retailer_id
+JOIN dlrPro.dbo.dealers d ON d.dealer_id = r.retailer_code
+WHERE m.returned_at >= %(start)s
+GROUP BY CONVERT(varchar(10), m.returned_at, 120)""").format(cp=_CP_LS)
+
+_SENT_BY_DAY_SQL = """SELECT CONVERT(varchar(10), created, 120) AS day, COUNT(*) AS n
+FROM dlrPro.dbo.[sent]
+WHERE created >= %(start)s
+GROUP BY CONVERT(varchar(10), created, 120)"""
+
+FUNNEL_WINDOWS = ("month", "30d")
+
+
+def _funnel_window_start(window):
+    """Start date for a funnel window: 'month' = first of this calendar month
+    (default), '30d' = 30 days ago."""
+    today = date.today()
+    if window == "30d":
+        return today - timedelta(days=30)
+    return today.replace(day=1)
+
+
+def pipeline_funnel(window="month"):
+    """Trigger-pipeline funnel counts over the window. total/matched/score/estimate
+    are exact single-pass SQL counts; phone/email/vehicle reuse the Trigger Leads
+    enrichment (3 sources, payload identity) so they match the page's PH/EM/VEH."""
+    start = _funnel_window_start(window).isoformat()
+    try:
+        agg = dlr.query(_FUNNEL_AGG_SQL, {"start": start}, timeout=120)[0]
+    except Exception:
+        return None
+    try:
+        rows = dlr.query(_FUNNEL_ROWS_SQL, {"start": start}, timeout=120)
+    except Exception:
+        rows = []
+    for r in rows:
+        try:
+            payload = json.loads(r.get("matched_payload") or "{}") or {}
+        except (ValueError, TypeError):
+            payload = {}
+        r["_ln"] = (r.get("cr_last") or payload.get("last_name") or "").strip()
+        r["_fn"] = (r.get("cr_first") or payload.get("first_name") or "").strip()
+        r["_addr"] = (payload.get("address_line_1") or "").strip()
+        r["_zip"] = (r.get("consumer_zip") or payload.get("consumer_zip") or "").strip()
+    _annotate_contact_flags(rows)
+    return {
+        "window": window,
+        "start": start,
+        "total_triggers": int(agg.get("total_triggers") or 0),
+        "matched_dealer": int(agg.get("matched_dealer") or 0),
+        "has_phone": sum(1 for r in rows if r.get("has_phone")),
+        "has_email": sum(1 for r in rows if r.get("has_email")),
+        "has_vehicle": sum(1 for r in rows if (r.get("veh") or "").strip()),
+        "has_score": int(agg.get("has_score") or 0),
+        "has_estimate": int(agg.get("has_estimate") or 0),
+    }
+
+
+def pipeline_by_day(window="month"):
+    """Per-day series over the window: triggers matched to a dealer (by returned_at)
+    and leads sent (by the sent ledger's created). One entry per calendar day from
+    the window start through today, zero-filled."""
+    start_d = _funnel_window_start(window)
+    start = start_d.isoformat()
+    try:
+        md = {r["day"]: int(r["n"]) for r in dlr.query(_MATCHED_BY_DAY_SQL, {"start": start}, timeout=120)}
+    except Exception:
+        md = {}
+    try:
+        sd = {r["day"]: int(r["n"]) for r in dlr.query(_SENT_BY_DAY_SQL, {"start": start}, timeout=120)}
+    except Exception:
+        sd = {}
+    out, d, today = [], start_d, date.today()
+    while d <= today:
+        key = d.isoformat()
+        out.append({"day": key, "matched": md.get(key, 0), "sent": sd.get(key, 0)})
+        d += timedelta(days=1)
+    return out
+
+
+def _nice_max(v):
+    """Smallest 'round' number >= v for a chart's y-axis (e.g. 72 -> 80)."""
+    v = max(1, int(round(v)))
+    step = 10 ** (len(str(v)) - 1)
+    return int(-(-v // step) * step)   # ceil to the step
+
+
+def by_day_chart_svg(days, width=760, height=300):
+    """Inline SVG for the by-day series: bars = triggers matched to a dealer, an
+    overlaid line = leads sent, on a shared y-axis. Returns markup (embed |safe).
+    Styling comes from .chart CSS classes on the page."""
+    L, R, T, B = 44, 16, 16, 46
+    plot_w, plot_h = width - L - R, height - T - B
+    n = max(1, len(days))
+    ymax = _nice_max(max([0] + [d["matched"] for d in days] + [d["sent"] for d in days]))
+    slot = plot_w / n
+    barw = max(2.0, slot * 0.55)
+
+    def x(i):
+        return L + (i + 0.5) * slot
+
+    def y(v):
+        return T + plot_h * (1 - (v / ymax if ymax else 0))
+
+    p = ['<svg viewBox="0 0 %d %d" class="chart" preserveAspectRatio="xMidYMid meet" '
+         'xmlns="http://www.w3.org/2000/svg" role="img">' % (width, height)]
+    for i in range(5):                       # 4 gridlines + labels
+        v = ymax * i / 4.0
+        gy = y(v)
+        p.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" class="grid"/>' % (L, gy, width - R, gy))
+        p.append('<text x="%.1f" y="%.1f" class="ylab">%d</text>' % (L - 6, gy + 3, round(v)))
+    for i, d in enumerate(days):             # bars: matched
+        h = plot_h * (d["matched"] / ymax if ymax else 0)
+        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" class="bar">'
+                 '<title>%s — %d matched</title></rect>'
+                 % (x(i) - barw / 2, T + plot_h - h, barw, h, d["day"], d["matched"]))
+    if n >= 2:                               # line: sent
+        pts = " ".join("%.1f,%.1f" % (x(i), y(d["sent"])) for i, d in enumerate(days))
+        p.append('<polyline points="%s" class="line"/>' % pts)
+    for i, d in enumerate(days):
+        p.append('<circle cx="%.1f" cy="%.1f" r="3.2" class="dot">'
+                 '<title>%s — %d sent</title></circle>' % (x(i), y(d["sent"]), d["day"], d["sent"]))
+    step = max(1, n // 12)                    # thin x labels when crowded
+    for i, d in enumerate(days):
+        if i % step == 0:
+            p.append('<text x="%.1f" y="%.1f" class="xlab">%s</text>'
+                     % (x(i), height - B + 16, d["day"][5:]))
+    p.append('</svg>')
+    return "".join(p)
+
+
 def get_lead_detail(product, lead_id):
     """Return (row_dict, groups, adf_xml) for a single lead, or (None, [], None)."""
     if product == "TRADE_IN":

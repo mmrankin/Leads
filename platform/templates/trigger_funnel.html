@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .seg { display:inline-flex; border:1px solid #2a3140; border-radius:8px; overflow:hidden; margin-bottom:18px; }
+  .seg a { padding:7px 16px; font-size:13px; color:#9aa4b2; text-decoration:none; background:transparent; }
+  .seg a.on { background:#2f6df6; color:#fff; }
+  .seg a:not(.on):hover { background:#1b2230; color:#cfd6e0; }
+  table.funnel td { vertical-align:middle; }
+  table.funnel td.lbl { white-space:nowrap; }
+  .barcell { width:46%; }
+  .fbar { display:block; height:14px; border-radius:4px; background:linear-gradient(90deg,#2f6df6,#5b8cff); min-width:2px; }
+  .fbar.dim { background:linear-gradient(90deg,#3a4658,#4b5a70); }
+  .chart-wrap { overflow-x:auto; }
+  svg.chart { width:100%; height:auto; min-width:520px; display:block; }
+  svg.chart .grid { stroke:#ffffff14; stroke-width:1; }
+  svg.chart .ylab { fill:#7f8a9c; font-size:11px; text-anchor:end; }
+  svg.chart .xlab { fill:#7f8a9c; font-size:11px; text-anchor:middle; }
+  svg.chart .bar  { fill:#3b6fd4; }
+  svg.chart .bar:hover { fill:#5b8cff; }
+  svg.chart .line { fill:none; stroke:#4fd1a5; stroke-width:2.5; }
+  svg.chart .dot  { fill:#4fd1a5; stroke:#0d1117; stroke-width:1.5; }
+  .legend { margin-top:10px; font-size:13px; color:#9aa4b2; }
+  .legend .key { display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:-2px; margin:0 4px 0 14px; }
+  .legend .key.bar { background:#3b6fd4; }
+  .legend .key.line { background:#4fd1a5; border-radius:2px; height:4px; }
+</style>
+
+<h1>Trigger Funnel</h1>
+<p class="subtitle">
+    The Equifax trigger pipeline for
+    <strong>{{ 'this calendar month' if window == 'month' else 'the last 30 days' }}</strong>{% if funnel %}
+    ({{ funnel.start }} → today){% endif %}. How many triggers reach each stage,
+    and matched-to-dealer vs. sent by day.
+</p>
+
+<div class="seg">
+    <a class="{{ 'on' if window == 'month' else '' }}" href="{{ url_for('trigger_funnel', window='month') }}">This month</a>
+    <a class="{{ 'on' if window == '30d' else '' }}" href="{{ url_for('trigger_funnel', window='30d') }}">Last 30 days</a>
+</div>
+
+{% if funnel %}
+{% set total = funnel.total_triggers or 1 %}
+{% set stages = [
+    ('Triggers from Equifax', funnel.total_triggers, false),
+    ('Matched to a dealer', funnel.matched_dealer, false),
+    ('Has phone number', funnel.has_phone, true),
+    ('Has email address', funnel.has_email, true),
+    ('Has vehicle', funnel.has_vehicle, true),
+    ('Has credit score', funnel.has_score, false),
+    ('Has estimated credit value', funnel.has_estimate, false),
+] %}
+<div class="card">
+    <h2>Funnel <span class="muted">({{ funnel.total_triggers }} triggers)</span></h2>
+    <div style="overflow-x:auto">
+    <table class="tbl funnel">
+        <thead><tr>
+            <th>Stage</th>
+            <th class="num">Count</th>
+            <th class="num">% of triggers</th>
+            <th></th>
+        </tr></thead>
+        <tbody>
+        {% for label, n, enriched in stages %}
+        <tr>
+            <td class="lbl">{{ label }}{% if enriched %} <span class="muted" title="Includes data appended from the ownership + Equifax consumer databases">*</span>{% endif %}</td>
+            <td class="num">{{ n }}</td>
+            <td class="num muted">{{ (100 * n / total) | round(0, 'floor') | int }}%</td>
+            <td class="barcell"><span class="fbar {{ 'dim' if enriched else '' }}" style="width:{{ (100 * n / total) | round(1) }}%"></span></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <p class="subtitle" style="margin-top:12px">
+        <span class="muted">*</span> Phone, email and vehicle include values appended from the
+        ownership and Equifax consumer databases (same as the Trigger Leads PH/EM/VEH flags),
+        not only what the raw Equifax trigger carried.
+    </p>
+</div>
+
+<div class="card">
+    <h2>Matched vs. Sent by day</h2>
+    <div class="chart-wrap">{{ chart_svg | safe }}</div>
+    <div class="legend">
+        <span class="key bar"></span> Triggers matched to a dealer
+        <span class="key line"></span> Trigger leads sent
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <p class="subtitle">Couldn't load the funnel — the CreditPipeline linked-server feed
+    may be temporarily unavailable. Reload to try again.</p>
+</div>
+{% endif %}
+{% endblock %}

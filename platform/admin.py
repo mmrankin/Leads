@@ -310,6 +310,19 @@ def lead_volume():
     return render_template("volume.html", rows=leads_view.pipeline_volume())
 
 
+@app.route("/leads/funnel")
+@require_login
+def trigger_funnel():
+    window = request.args.get("window", "month")
+    if window not in leads_view.FUNNEL_WINDOWS:
+        window = "month"
+    days = leads_view.pipeline_by_day(window)
+    return render_template("trigger_funnel.html",
+                           funnel=leads_view.pipeline_funnel(window),
+                           window=window,
+                           chart_svg=leads_view.by_day_chart_svg(days))
+
+
 @app.route("/trigger-leads")
 @require_login
 def trigger_leads():
