@@ -161,6 +161,12 @@ def send_lead(row):
     except Exception as e:
         LOG.warning("enrichment failed for result %s: %s",
                     row.get("result_id"), e)
+
+    # Only send records with a phone or email (from any source). No contact ->
+    # skip WITHOUT recording, so it's re-evaluated later if contact appears.
+    if not ((lead.get("phone") or "").strip() or (lead.get("email") or "").strip()):
+        return "skipped_no_contact", "no phone or email from any source", None
+
     lead_id = db.insert_lead(lead)
     lead["id"] = lead_id
     adf_xml = build_adf(lead, dealer, estimate=None,
@@ -215,7 +221,7 @@ def run(dry_run=False):
             continue
         status, detail, lead_id = send_lead(row)
         counts[status] = counts.get(status, 0) + 1
-        if status != "skipped_no_dealer":   # a send was recorded in the ledger
+        if status not in ("skipped_no_dealer", "skipped_no_contact"):   # a send was recorded
             month_sent[did] += 1
         LOG.info("result %s -> %s (lead %s) %s", row["result_id"], status, lead_id, detail)
 

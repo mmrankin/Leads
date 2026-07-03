@@ -348,6 +348,8 @@ def trigger_send():
     status, detail, lead_id = _cp_send_lead(row)
     if status in ("sent", "pending"):
         flash(f"Lead sent to {row.get('dealer_name')} (result #{result_id}, {status}).", "ok")
+    elif status and status.startswith("skipped"):
+        flash(f"Result #{result_id} not sent — {detail}.", "error")
     else:
         flash(f"Send failed for result #{result_id}: {status} — {detail}", "error")
     return redirect(url_for("trigger_leads", **keep))
