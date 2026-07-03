@@ -50,6 +50,7 @@ def pipeline_volume():
         this_month = int(r.get("this_month") or 0)
         r["tracking"] = round(this_month / dom * days_in_month) if dom else this_month
         r["requested_daily"] = round(mx / days_in_month, 1)
+        r["needed"] = max(0, mx - this_month)   # more leads to reach the monthly max
     return rows
 
 

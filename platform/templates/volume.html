@@ -4,7 +4,8 @@
 <p class="subtitle">
     Credit Pipeline leads delivered per dealer (from the sent ledger).
     <strong>Tracking</strong> projects the month-end total at the current pace;
-    <strong>Requested daily</strong> is the dealer's monthly max spread over the month.
+    <strong>Requested daily</strong> is the dealer's monthly max spread over the month;
+    <strong>Needed</strong> is how many more leads this month would reach the monthly max.
 </p>
 
 <div class="card">
@@ -14,6 +15,7 @@
     <table class="tbl nowrap">
         <thead><tr>
             <th>Dealer</th>
+            <th>Code</th>
             <th class="num">Last month</th>
             <th class="num">This month</th>
             <th class="num">Yesterday</th>
@@ -21,11 +23,13 @@
             <th class="num" title="Projected month-end total at the current pace">Tracking (month)</th>
             <th class="num" title="Monthly max &divide; days in month">Requested daily</th>
             <th class="num" title="Max leads per month for this dealer">Monthly max</th>
+            <th class="num" title="Leads still needed this month to reach the monthly max">Needed</th>
         </tr></thead>
         <tbody>
         {% for r in rows %}
         <tr>
-            <td>{{ r.dealer_name }} <span class="muted">({{ r.dealer_id }})</span></td>
+            <td>{{ r.dealer_name }}</td>
+            <td class="muted">{{ r.dealer_id }}</td>
             <td class="num">{{ r.last_month }}</td>
             <td class="num">{{ r.this_month }}</td>
             <td class="num">{{ r.yesterday }}</td>
@@ -35,6 +39,7 @@
             </td>
             <td class="num">{{ r.requested_daily }}</td>
             <td class="num muted">{{ r.max_leads_per_month }}</td>
+            <td class="num">{{ r.needed }}</td>
         </tr>
         {% endfor %}
         </tbody>
