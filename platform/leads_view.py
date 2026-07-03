@@ -6,9 +6,12 @@ into a common shape so the admin can browse them in one place.
 
 import calendar
 import json
+import logging
 from datetime import date, timedelta
 
 import dlrpro_db as dlr
+
+LOG = logging.getLogger("leads_view")
 
 
 # ----- Credit Pipeline volume report (per-dealer counts from the dbo.sent ledger) -----
@@ -379,10 +382,16 @@ def _annotate_contact_flags(rows):
 
 
 def trigger_leads(matching_customer=False, matching_dealer=False,
-                  sent_status="unsent", limit=1000):
-    """Rows from the CreditPipeline match_result feed joined to the ADF dealer and
-    the sent ledger. Filters: matching_customer (c.last_name not null),
-    matching_dealer (d.dealer_name not null), sent_status = unsent|sent|all."""
+                  sent_status="unsent", limit=200):
+    """The `limit` newest rows (by result_id, descending) from the CreditPipeline
+    match_result feed joined to the ADF dealer and the sent ledger. Filters:
+    matching_customer (c.last_name not null), matching_dealer (d.dealer_name not
+    null), sent_status = unsent|sent|all.
+
+    Ordering note: the 4-table cross-linked-server join is only fast with
+    result_id ASC (it streams the remote clustered index); ORDER BY result_id DESC
+    collapses the plan into a 180s+ timeout. So we fetch ascending up to a
+    generous cap, then sort newest-first and slice to `limit` in Python."""
     # Never show rows with a blank consumer_id on match_result.
     conds = ["m.consumer_id IS NOT NULL"]
     if matching_customer:
@@ -396,10 +405,18 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
     elif sent_status == "sent":
         conds.append("s.id IS NOT NULL")
     where = ("WHERE " + " AND ".join(conds)) if conds else ""
+    fetch_cap = max(int(limit), 1000)   # fetch ascending (fast), then trim in Python
     try:
-        rows = dlr.query(_TRIGGER_LEADS_SQL.format(limit=int(limit), where=where))
+        rows = dlr.query(_TRIGGER_LEADS_SQL.format(limit=fetch_cap, where=where))
     except Exception:
         return []
+    # Newest first, then keep only the top `limit`.
+    rows.sort(key=lambda r: int(r["result_id"]) if r.get("result_id") is not None else -1,
+              reverse=True)
+    if len(rows) >= fetch_cap:
+        LOG.warning("trigger_leads hit the fetch cap (%d); newest rows beyond it are "
+                    "hidden — raise the cap or pre-filter by result_id.", fetch_cap)
+    rows = rows[:int(limit)]
     for r in rows:
         r["sent"] = r.get("sent_id") is not None
         raw = r.get("matched_payload") or ""
