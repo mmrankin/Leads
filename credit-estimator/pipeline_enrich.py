@@ -38,7 +38,8 @@ _EQUIFAX_SQL = """SELECT TOP 1
     EstimatedAmountFinanced AS AmountFinanced1,
     EstimatedOpenDate AS OpenDate1,
     EstimatedPayOffDate AS EstimatedPayOffDate1,
-    VIN, Make, Model, Year
+    VIN, Make, Model, Year,
+    Email, CellPhone, HomePhone, WorkPhone, AppendedEmail, AppendedPhone
   FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecordTriggers]
   WHERE result_id = %(rid)s"""
 
@@ -61,14 +62,17 @@ def match_equifax_trigger(result_id):
     return rows[0] if rows else None
 
 
-# Appended email / phone from the Equifax consumer tables (instance/type 1).
+# Appended email / phone from the Equifax consumer tables — best available
+# (prefer the lowest instance, but fall back to any so we don't miss a consumer
+# who only has contact at instance > 1).
 _EQUIFAX_EMAIL_SQL = """SELECT TOP 1 emailAddress
   FROM [{ls}].[{db}].[dbo].[ConsumerEmails]
-  WHERE consumer_id = %(cid)s AND instance = 1"""
+  WHERE consumer_id = %(cid)s AND NULLIF(LTRIM(RTRIM(emailAddress)),'') IS NOT NULL
+  ORDER BY instance"""
 _EQUIFAX_PHONE_SQL = """SELECT TOP 1 telephoneNumber
   FROM [{ls}].[{db}].[dbo].[ConsumerTelephones]
-  WHERE consumer_id = %(cid)s AND telephoneTypeInstance = 1
-  ORDER BY TelephoneType_ID DESC"""
+  WHERE consumer_id = %(cid)s AND NULLIF(LTRIM(RTRIM(telephoneNumber)),'') IS NOT NULL
+  ORDER BY telephoneTypeInstance, TelephoneType_ID DESC"""
 
 
 def _digits(v):
@@ -85,6 +89,29 @@ def _fmt_phone(v):
     if d and len(d) == 10:
         return f"{d[:3]}-{d[3:6]}-{d[6:]}"
     return d
+
+
+def _first_nonempty(*vals):
+    """First non-empty, stripped string from the candidates, or None."""
+    for v in vals:
+        s = str(v).strip() if v is not None else ""
+        if s:
+            return s
+    return None
+
+
+def _first_phone(*vals):
+    """First candidate with >=10 digits, normalized to a 10-digit string (drops a
+    leading US country code), or None."""
+    for v in vals:
+        d = _digits(v)
+        if not d:
+            continue
+        if len(d) == 11 and d[0] == "1":
+            d = d[1:]
+        if len(d) >= 10:
+            return d[:10]
+    return None
 
 
 def match_equifax_contact(consumer_id):
@@ -287,20 +314,29 @@ def enrich_lead(lead, result_id=None, consumer_id=None):
     if model:
         lead["vehicle_model"] = model
 
-    # Contact -> fill only when the lead is missing it (tbl_ownership, then appended).
-    if m:
-        if not (lead.get("phone") or "").strip():
-            ph = _phone_str(m.get("primary_phone"))
-            if ph:
-                lead["phone"] = ph
-        if not (lead.get("email") or "").strip():
-            em = (m.get("email") or "").strip()
-            if em:
-                lead["email"] = em
-    if not (lead.get("email") or "").strip() and contact.get("email"):
-        lead["email"] = contact["email"]
-    if not (lead.get("phone") or "").strip() and contact.get("phone"):
-        lead["phone"] = contact["phone"]
+    # Contact: pull email/phone from EVERY source (best first) and set the record —
+    # the trigger view (consumer + appended), tbl_ownership, and the Equifax
+    # consumer tables. Keep whatever the caller already resolved if present.
+    email = _first_nonempty(
+        lead.get("email"),                             # payload / customer_record
+        trig.get("Email") if trig else None,           # trigger view — consumer
+        trig.get("AppendedEmail") if trig else None,   # trigger view — appended
+        m.get("email") if m else None,                 # tbl_ownership
+        contact.get("email"),                          # equifax..ConsumerEmails
+    )
+    if email:
+        lead["email"] = email
+    phone = _first_phone(
+        lead.get("phone"),
+        trig.get("CellPhone") if trig else None,
+        trig.get("HomePhone") if trig else None,
+        trig.get("WorkPhone") if trig else None,
+        trig.get("AppendedPhone") if trig else None,
+        _phone_str(m.get("primary_phone")) if m else None,
+        contact.get("phone"),
+    )
+    if phone:
+        lead["phone"] = phone
 
     # Notes: vehicle (VIN + year/make/model) + mileage, the credit/finance block
     # (trigger view first, else the tbl_ownership estimate), then appended contact.
@@ -332,10 +368,10 @@ def enrich_lead(lead, result_id=None, consumer_id=None):
             if pay > 0:
                 lines.append(f"Estimated Payment: ${pay:,}")
 
-    if contact.get("email"):
-        lines.append(f"Email Address Appended: {contact['email']}")
-    if contact.get("phone"):
-        lines.append(f"Phone Number Appended: {_fmt_phone(contact['phone'])}")
+    if lead.get("email"):
+        lines.append(f"Email Address Appended: {lead['email']}")
+    if lead.get("phone"):
+        lines.append(f"Phone Number Appended: {_fmt_phone(lead['phone'])}")
 
     if lines:
         block = "\n".join(lines)
