@@ -151,8 +151,8 @@ _OWNERSHIP_SQL = """SELECT TOP 1
     year, make, model, vin, mileage, price, rate, term, primary_phone, email, last_seen
   FROM panafax..tbl_ownership WITH (NOLOCK)
   WHERE zip = CAST(%(z)s AS varchar(20))
-    AND address1 = CAST(%(a)s AS varchar(200))
-    AND last_name = CAST(%(l)s AS varchar(100))
+    AND last_name LIKE LEFT(CAST(%(l)s AS varchar(100)), 5) + '%%'
+    AND address1 LIKE LEFT(CAST(%(a)s AS varchar(200)), 8) + '%%'
   ORDER BY last_seen DESC OPTION (MAXDOP 2)"""
 
 # Average finance rate for recently-sold used vehicles — the "current used-car
@@ -172,7 +172,8 @@ def _f(v):
 
 
 def match_owner(last_name, address, zip_code):
-    """Most-recent tbl_ownership row for (last_name, address, zip), or None."""
+    """Most-recent tbl_ownership row for a fuzzy match — exact zip, last_name
+    LIKE first-5 + '%', address1 LIKE first-8 + '%' — or None."""
     ln = (last_name or "").strip()
     ad = (address or "").strip()
     z = (zip_code or "").strip()
