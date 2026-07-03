@@ -245,12 +245,15 @@ def _ownership_batch(keys):
         return {}
     esc = lambda s: s.replace("'", "''")
     values = ",".join("('%s','%s','%s')" % (esc(ln), esc(ad), esc(z)) for (ln, ad, z) in keys)
+    # Fuzzy match: exact zip, last_name LIKE first-5 + '%', address1 LIKE first-8 + '%'.
     sql = ("SELECT k.ln, k.ad, k.z, o.email, o.primary_phone, o.[year], o.make "
            "FROM (VALUES %s) k(ln, ad, z) "
            "OUTER APPLY (SELECT TOP 1 email, primary_phone, [year], make "
            "  FROM panafax..tbl_ownership WITH (NOLOCK) "
-           "  WHERE zip = CAST(k.z AS varchar(20)) AND address1 = CAST(k.ad AS varchar(200)) "
-           "  AND last_name = CAST(k.ln AS varchar(100)) ORDER BY last_seen DESC) o" % values)
+           "  WHERE zip = CAST(k.z AS varchar(20)) "
+           "    AND last_name LIKE LEFT(CAST(k.ln AS varchar(100)), 5) + '%%' "
+           "    AND address1 LIKE LEFT(CAST(k.ad AS varchar(200)), 8) + '%%' "
+           "  ORDER BY last_seen DESC) o" % values)
     out = {}
     try:
         for r in dlr.query(sql):
