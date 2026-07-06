@@ -124,10 +124,14 @@ def eligible(row):
     return True, None
 
 
-def send_lead(row):
+def send_lead(row, require_phone=False):
     """Build + send one Credit Pipeline lead from a fetched match row, store it in
     credit_leads, and record it in the `sent` ledger. Returns (status, detail,
-    lead_id). Assumes the row is already eligible()."""
+    lead_id). Assumes the row is already eligible().
+
+    require_phone=True (the automated poller) only sends leads that have a phone
+    number; the default (the admin "Send Lead" button) sends any lead with a phone
+    OR email."""
     dealer_id = row["dealer_id"]
     dealer = pdb.get_dealer(dealer_id)
     if not dealer:
@@ -164,12 +168,16 @@ def send_lead(row):
         LOG.warning("enrichment failed for result %s: %s",
                     row.get("result_id"), e)
 
-    # Only send records with a phone or email (from any source). No contact ->
-    # bump the retry counter and skip (not recorded as sent). Once it reaches the
-    # cap the record is no longer fetched (pipeline_source).
-    if not ((lead.get("phone") or "").strip() or (lead.get("email") or "").strip()):
+    # Contact gate. The poller (require_phone) only sends leads with a phone
+    # number; the manual button sends any lead with a phone OR email. No qualifying
+    # contact -> bump the retry counter and skip (not recorded as sent). Once it
+    # reaches the cap the record is no longer fetched (pipeline_source).
+    has_phone = bool((lead.get("phone") or "").strip())
+    has_email = bool((lead.get("email") or "").strip())
+    if not (has_phone if require_phone else (has_phone or has_email)):
         attempts = pdb.bump_no_contact(row["dealers_id"], row["result_id"])
-        return "skipped_no_contact", f"no phone or email (attempt {attempts})", None
+        missing = "no phone number" if require_phone else "no phone or email"
+        return "skipped_no_contact", f"{missing} (attempt {attempts})", None
 
     lead_id = db.insert_lead(lead)
     lead["id"] = lead_id
@@ -249,7 +257,7 @@ def run(dry_run=False):
             month_sent[did] += 1
             today_sent[did] += 1
             continue
-        status, detail, lead_id = send_lead(row)
+        status, detail, lead_id = send_lead(row, require_phone=True)
         counts[status] = counts.get(status, 0) + 1
         if status not in ("skipped_no_dealer", "skipped_no_contact"):   # a send was recorded
             month_sent[did] += 1
