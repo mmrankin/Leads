@@ -46,6 +46,8 @@ from email_send import send_adf
 LOG = logging.getLogger("pipeline_poller")
 SOURCE = "Credit Pipeline"
 BATCH = int(os.environ.get("CREDITPIPELINE_BATCH", "1000"))
+# Minimum minutes between automated sends to the same dealer (spacing).
+SPACING_MINUTES = int(os.environ.get("CREDITPIPELINE_SPACING_MIN", "40"))
 
 
 # Equifax streaming-trigger code -> human description, for when the payload
@@ -211,6 +213,8 @@ def run(dry_run=False):
     today_sent = {}   # dealers.id -> Credit Pipeline leads already sent today
     daily_cap = {}    # dealers.id -> today's paced allowance
     max_cap = {}      # dealer_id  -> monthly cap
+    recent_send = {}  # dealers.id -> sent within SPACING_MINUTES? (ledger, once/dealer)
+    sent_this_run = set()   # dealers.id sent to during this run
     for row in rows:
         ok, reason = eligible(row)
         if not ok:
@@ -249,6 +253,18 @@ def run(dry_run=False):
                      row["result_id"], dcode, today_sent[did], daily_cap[did], month_sent[did], cap)
             continue
 
+        # Spacing: at most one lead per dealer per SPACING_MINUTES. Skip if we
+        # already sent to this dealer this run, or the ledger shows a send within
+        # the window. Checked before send_lead so cooldown dealers cost no
+        # enrichment. A no-phone skip does NOT consume the slot (see below).
+        if did not in recent_send:
+            recent_send[did] = pdb.recently_sent(did, SPACING_MINUTES)
+        if did in sent_this_run or recent_send[did]:
+            counts["spaced"] = counts.get("spaced", 0) + 1
+            LOG.info("result %s (%s) -> skipped: within the %d-min send spacing",
+                     row["result_id"], dcode, SPACING_MINUTES)
+            continue
+
         if dry_run:
             counts["dry_run"] = counts.get("dry_run", 0) + 1
             LOG.info("result %s -> would send to %s <%s> (%d/%d today; %d/%d month)",
@@ -256,12 +272,14 @@ def run(dry_run=False):
                      today_sent[did] + 1, daily_cap[did], month_sent[did] + 1, cap)
             month_sent[did] += 1
             today_sent[did] += 1
+            sent_this_run.add(did)
             continue
         status, detail, lead_id = send_lead(row, require_phone=True)
         counts[status] = counts.get(status, 0) + 1
         if status not in ("skipped_no_dealer", "skipped_no_contact"):   # a send was recorded
             month_sent[did] += 1
             today_sent[did] += 1
+            sent_this_run.add(did)   # start this dealer's spacing cooldown
         LOG.info("result %s -> %s (lead %s) %s", row["result_id"], status, lead_id, detail)
 
     LOG.info("Run complete (%s). Fetched %d: %s",

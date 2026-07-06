@@ -529,3 +529,14 @@ def sent_today_total():
     row = dlr.one(
         "SELECT COUNT_BIG(*) AS c FROM dbo.sent WHERE created >= CAST(GETDATE() AS date)")
     return int(row["c"]) if row else 0
+
+
+def recently_sent(dealers_id, minutes):
+    """True if this dealer (dealers.id) has a Credit Pipeline send within the last
+    `minutes` minutes (by the sent ledger's `created`, DB clock) — used to space
+    out the poller's automated sends."""
+    row = dlr.one(
+        "SELECT TOP 1 id FROM dbo.sent WHERE dealer_id=%(d)s "
+        "AND created >= DATEADD(minute, %(m)s, GETDATE())",
+        {"d": int(dealers_id), "m": -int(minutes)})
+    return row is not None
