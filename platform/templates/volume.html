@@ -20,6 +20,7 @@
             <th class="num">This month</th>
             <th class="num">Yesterday</th>
             <th class="num">Today</th>
+            <th title="Most recent lead sent to this dealer (server time)">Last received</th>
             <th class="num" title="Projected month-end total at the current pace">Tracking (month)</th>
             <th class="num" title="Monthly max &divide; days in month">Requested daily</th>
             <th class="num" title="Max leads per month for this dealer">Monthly max</th>
@@ -34,6 +35,7 @@
             <td class="num">{{ r.this_month }}</td>
             <td class="num">{{ r.yesterday }}</td>
             <td class="num">{{ r.today }}</td>
+            <td class="muted">{{ r.last_sent or '—' }}</td>
             <td class="num">
                 <span style="color:{{ '#f08a89' if r.tracking > r.max_leads_per_month else '#4fd1a5' }};font-weight:600">{{ r.tracking }}</span>
             </td>

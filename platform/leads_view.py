@@ -20,7 +20,8 @@ _VOLUME_SQL = """SELECT d.dealer_id, d.dealer_name, dp.max_leads_per_month,
   SUM(CASE WHEN s.created >= %(lm)s AND s.created < %(tm)s THEN 1 ELSE 0 END) AS last_month,
   SUM(CASE WHEN s.created >= %(tm)s THEN 1 ELSE 0 END) AS this_month,
   SUM(CASE WHEN s.created >= %(yst)s AND s.created < %(td)s THEN 1 ELSE 0 END) AS yesterday,
-  SUM(CASE WHEN s.created >= %(td)s THEN 1 ELSE 0 END) AS today
+  SUM(CASE WHEN s.created >= %(td)s THEN 1 ELSE 0 END) AS today,
+  CONVERT(varchar(19), MAX(s.created), 120) AS last_sent
 FROM dlrPro.dbo.dealers d
 JOIN dlrPro.dbo.dealer_products dp ON dp.dealer_id = d.dealer_id AND dp.product_code = 'CREDIT_PIPELINE'
 LEFT JOIN dlrPro.dbo.[sent] s ON s.dealer_id = d.id
@@ -53,6 +54,7 @@ def pipeline_volume():
         this_month = int(r.get("this_month") or 0)
         r["tracking"] = round(this_month / dom * days_in_month) if dom else this_month
         r["requested_daily"] = round(mx / days_in_month, 1)
+        r["last_sent"] = (r.get("last_sent") or "")[:16] or None   # YYYY-MM-DD HH:MM, or None
         r["needed"] = max(0, mx - this_month)   # more leads to reach the monthly max
     return rows
 
