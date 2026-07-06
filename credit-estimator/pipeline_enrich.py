@@ -301,17 +301,17 @@ def enrich_lead(lead, result_id=None, consumer_id=None):
         PREFERRED source. When there is no row, the notes fall back to the
         tbl_ownership finance estimate.
       • tbl_ownership (matched by last_name / address / zip): the vehicle
-        (year/make/model + VIN) and mileage, plus phone/email when the lead has
-        none. The trigger view's own vehicle is used when present (it's usually
-        NULL there), otherwise tbl_ownership.
-      • appended email/phone from the Equifax consumer tables (by consumer_id).
+        (year/make/model + VIN) and mileage only. The trigger view's own vehicle is
+        used when present (it's usually NULL there), otherwise tbl_ownership.
+      • phone + email come ONLY from the Equifax trigger view — the tbl_ownership
+        match and the Equifax consumer tables are NO LONGER appended for contact
+        (consumer_id is retained for compatibility but unused here).
 
     Name/address stay as the caller resolved them (record → matched_payload JSON).
     Returns the tbl_ownership row (or None)."""
     trig = match_equifax_trigger(result_id)
     m = match_owner(lead.get("last_name"), lead.get("address"), lead.get("zip"),
-                    lead.get("first_name"))
-    contact = match_equifax_contact(consumer_id)   # appended email/phone (equifax..Consumer*)
+                    lead.get("first_name"))   # vehicle / mileage / finance fallback only (not contact)
 
     # Vehicle: prefer the trigger view (usually NULL), else tbl_ownership.
     def _first(*vals):
@@ -334,29 +334,21 @@ def enrich_lead(lead, result_id=None, consumer_id=None):
     if model:
         lead["vehicle_model"] = model
 
-    # Contact: pull email/phone from EVERY source (best first) and set the record —
-    # the trigger view (consumer + appended), tbl_ownership, and the Equifax
-    # consumer tables. Keep whatever the caller already resolved if present.
-    email = _first_nonempty(
-        lead.get("email"),                             # payload / customer_record
+    # Contact policy: phone + email come ONLY from the Equifax trigger view
+    # (vw_EquifaxConsumerRecordTriggers). The tbl_ownership match and the Equifax
+    # consumer tables (equifax..Consumer*) are NO LONGER appended for contact, and
+    # any contact the caller resolved from the payload is overridden — a record with
+    # no trigger-view contact goes out with none (and won't pass the contact gate).
+    lead["email"] = _first_nonempty(
         trig.get("Email") if trig else None,           # trigger view — consumer
         trig.get("AppendedEmail") if trig else None,   # trigger view — appended
-        m.get("email") if m else None,                 # tbl_ownership
-        contact.get("email"),                          # equifax..ConsumerEmails
-    )
-    if email:
-        lead["email"] = email
-    phone = _first_phone(
-        lead.get("phone"),
+    ) or ""
+    lead["phone"] = _first_phone(
         trig.get("CellPhone") if trig else None,
         trig.get("HomePhone") if trig else None,
         trig.get("WorkPhone") if trig else None,
         trig.get("AppendedPhone") if trig else None,
-        _phone_str(m.get("primary_phone")) if m else None,
-        contact.get("phone"),
-    )
-    if phone:
-        lead["phone"] = phone
+    ) or ""
 
     # Notes: vehicle (VIN + year/make/model) + mileage, the credit/finance block
     # (trigger view first, else the tbl_ownership estimate), then appended contact.
