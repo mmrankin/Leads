@@ -1,5 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+  /* Pin the first column (Dealer) so it stays visible when scrolling right. */
+  table.sticky-first th:first-child,
+  table.sticky-first td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--panel);
+    box-shadow: 1px 0 0 var(--line);   /* divider from the scrolling columns */
+  }
+  table.sticky-first tbody tr:hover td:first-child { background: var(--panel2); }
+</style>
 <h1>Lead Volume</h1>
 <p class="subtitle">
     Credit Pipeline leads delivered per dealer (from the sent ledger).
@@ -12,7 +24,7 @@
     <h2>By Dealer <span class="muted">({{ rows|length }})</span></h2>
     {% if rows %}
     <div style="overflow-x:auto">
-    <table class="tbl nowrap">
+    <table class="tbl nowrap sticky-first">
         <thead><tr>
             <th>Dealer</th>
             <th>Code</th>
