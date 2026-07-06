@@ -218,9 +218,14 @@ FIELD_LABELS = {
 
 # ----- Trigger Leads (CreditPipeline match_result, via the 10.1.4.8 linked server) -----
 
+# NOTE: the Equifax consumer view (vw_EquifaxConsumerRecord, for eq_first/eq_last)
+# is deliberately NOT joined here. Each join is fast alone, but combining this
+# remote view with the other remote (customer_record/retailer) and local
+# (dealers/sent) joins collapses the distributed query plan into a hard timeout
+# (0.2s -> 120s+). The Equifax names are fetched separately in _equifax_name_map()
+# and merged in trigger_leads(); "matching_customer" is then filtered in Python.
 _TRIGGER_LEADS_SQL = """SELECT TOP {limit}
-  c.first_name AS cr_first, c.last_name AS cr_last,
-  e.FirstName AS eq_first, e.LastName AS eq_last, m.consumer_id,
+  c.first_name AS cr_first, c.last_name AS cr_last, m.consumer_id,
   r.retailer_name AS CPName, d.dealer_name AS ADFName,
   m.result_id, m.run_group_id, m.run_id, m.subscription_id, m.bucket_id,
   m.candidate_id, m.customer_record_id, m.retailer_id,
@@ -230,12 +235,33 @@ _TRIGGER_LEADS_SQL = """SELECT TOP {limit}
   s.id AS sent_id, CONVERT(varchar(19), s.created, 120) AS sent_at
 FROM [10.1.4.8].[CreditPipeline].[dbo].[match_result] m
 LEFT JOIN [10.1.4.8].[CreditPipeline].[dbo].[customer_record] c ON c.customer_record_id = m.customer_record_id
-LEFT JOIN [10.1.4.8].[CreditPipeline].[dbo].[vw_EquifaxConsumerRecord] e ON e.Consumer_ID = m.consumer_id
 LEFT JOIN [10.1.4.8].[CreditPipeline].[dbo].[retailer] r ON r.retailer_id = m.retailer_id
 LEFT JOIN dlrPro.dbo.dealers d ON d.dealer_id = r.retailer_code
 LEFT JOIN dlrPro.dbo.[sent] s ON d.id = s.dealer_id AND m.result_id = s.result_id
 {where}
 ORDER BY m.result_id ASC"""
+
+
+def _equifax_name_map(consumer_ids):
+    """consumer_id -> (FirstName, LastName) from vw_EquifaxConsumerRecord. Fetched
+    on its own (not joined into the main feed query — see the note above) and keyed
+    by int(consumer_id)."""
+    ids = ",".join(str(int(x)) for x in consumer_ids if x)
+    if not ids:
+        return {}
+    out = {}
+    try:
+        rows = dlr.query(
+            "SELECT Consumer_ID, FirstName, LastName "
+            "FROM [10.1.4.8].[CreditPipeline].[dbo].[vw_EquifaxConsumerRecord] "
+            "WHERE Consumer_ID IN (%s)" % ids)
+    except Exception:
+        return {}
+    for r in rows:
+        cid = r.get("Consumer_ID")
+        if cid is not None:
+            out[int(cid)] = (r.get("FirstName"), r.get("LastName"))
+    return out
 
 
 def _has_text(*vals):
@@ -393,11 +419,8 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
     collapses the plan into a 180s+ timeout. So we fetch ascending up to a
     generous cap, then sort newest-first and slice to `limit` in Python."""
     # Never show rows with a blank consumer_id on match_result.
+    # (matching_customer is applied in Python below — its Equifax view isn't joined.)
     conds = ["m.consumer_id IS NOT NULL"]
-    if matching_customer:
-        # "Matching customer" = the consumer_id resolved to an Equifax consumer
-        # record (the definitive match).
-        conds.append("e.Consumer_ID IS NOT NULL")
     if matching_dealer:
         conds.append("d.dealer_name IS NOT NULL")
     if sent_status == "unsent":
@@ -410,12 +433,21 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
         rows = dlr.query(_TRIGGER_LEADS_SQL.format(limit=fetch_cap, where=where))
     except Exception:
         return []
-    # Newest first, then keep only the top `limit`.
+    # Newest first.
     rows.sort(key=lambda r: int(r["result_id"]) if r.get("result_id") is not None else -1,
               reverse=True)
     if len(rows) >= fetch_cap:
         LOG.warning("trigger_leads hit the fetch cap (%d); newest rows beyond it are "
                     "hidden — raise the cap or pre-filter by result_id.", fetch_cap)
+    # Equifax consumer name (eq_first/eq_last), fetched separately and merged.
+    emap = _equifax_name_map([r.get("consumer_id") for r in rows])
+    for r in rows:
+        cid = r.get("consumer_id")
+        r["eq_first"], r["eq_last"] = (emap.get(int(cid)) if cid is not None else None) or (None, None)
+    if matching_customer:
+        # "Matching customer" = consumer_id resolved to an Equifax consumer record.
+        rows = [r for r in rows if r.get("eq_last")]
+    # Keep only the top `limit` (newest), after any customer filter.
     rows = rows[:int(limit)]
     for r in rows:
         r["sent"] = r.get("sent_id") is not None
