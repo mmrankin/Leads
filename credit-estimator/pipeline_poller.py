@@ -47,7 +47,7 @@ LOG = logging.getLogger("pipeline_poller")
 SOURCE = "Credit Pipeline"
 BATCH = int(os.environ.get("CREDITPIPELINE_BATCH", "1000"))
 # Minimum minutes between automated sends to the same dealer (spacing).
-SPACING_MINUTES = int(os.environ.get("CREDITPIPELINE_SPACING_MIN", "40"))
+SPACING_MINUTES = int(os.environ.get("CREDITPIPELINE_SPACING_MIN", "5"))
 
 
 # Equifax streaming-trigger code -> human description, for when the payload
