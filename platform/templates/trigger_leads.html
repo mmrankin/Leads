@@ -23,9 +23,16 @@
             </button>
         </form>
     </div>
-    <div style="text-align:center;padding:6px 22px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel2)">
-        <div style="font-size:34px;font-weight:600;line-height:1">{{ eligible_dealers }}</div>
-        <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin-top:6px">Eligible dealers</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+        <div style="text-align:center;padding:6px 22px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel2)">
+            <div style="font-size:34px;font-weight:600;line-height:1">{{ sent_today }}</div>
+            <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin-top:6px">Sent today</div>
+        </div>
+        <div style="text-align:center;padding:6px 22px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel2)"
+             title="Unsent leads matched to a customer and dealer, with a phone number">
+            <div style="font-size:34px;font-weight:600;line-height:1">{{ available_to_send }}</div>
+            <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin-top:6px">Available to send</div>
+        </div>
     </div>
 </div>
 

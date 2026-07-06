@@ -522,3 +522,10 @@ def sent_today(dealers_id):
         "AND created >= CAST(GETDATE() AS date)",
         {"d": int(dealers_id)})
     return int(row["c"]) if row else 0
+
+
+def sent_today_total():
+    """Count of Credit Pipeline leads sent across all dealers since midnight today."""
+    row = dlr.one(
+        "SELECT COUNT_BIG(*) AS c FROM dbo.sent WHERE created >= CAST(GETDATE() AS date)")
+    return int(row["c"]) if row else 0

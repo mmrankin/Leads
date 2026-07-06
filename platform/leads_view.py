@@ -483,6 +483,14 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
     return rows
 
 
+def available_to_send_count():
+    """How many unsent trigger leads are ready to send: matched to an Equifax
+    customer AND an ADF dealer AND with a phone number. Reuses trigger_leads (and
+    its per-result_id enrichment cache), so it's cheap once the page has loaded."""
+    return len(trigger_leads(matching_customer=True, matching_dealer=True,
+                             matching_phone=True, sent_status="unsent"))
+
+
 # ----- Trigger Funnel report (Equifax trigger -> matched -> enriched) -----
 
 _CP_LS = "[10.1.4.8].[CreditPipeline].[dbo]"
