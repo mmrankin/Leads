@@ -328,13 +328,16 @@ def trigger_funnel():
 def trigger_leads():
     f_customer = request.args.get("customer") == "1"
     f_dealer = request.args.get("dealer") == "1"
+    f_phone = request.args.get("phone") == "1"
     f_sent = request.args.get("sent", "unsent")
     if f_sent not in ("unsent", "sent", "all"):
         f_sent = "unsent"
     rows = leads_view.trigger_leads(matching_customer=f_customer,
-                                    matching_dealer=f_dealer, sent_status=f_sent)
+                                    matching_dealer=f_dealer, matching_phone=f_phone,
+                                    sent_status=f_sent)
     return render_template("trigger_leads.html", rows=rows,
-                           f_customer=f_customer, f_dealer=f_dealer, f_sent=f_sent,
+                           f_customer=f_customer, f_dealer=f_dealer, f_phone=f_phone,
+                           f_sent=f_sent,
                            pipeline_flow=pdb.get_pipeline_flow(), can_send=_CP_SEND_OK,
                            eligible_dealers=pdb.count_active_grants(pdb.PRODUCT_CREDIT_PIPELINE))
 
@@ -345,7 +348,7 @@ def trigger_send():
     """Send one Credit Pipeline lead for a match result_id (same process as the
     poller: build ADF -> email -> store in credit_leads -> record in `sent`)."""
     result_id = (request.form.get("result_id") or "").strip()
-    keep = {k: request.form.get(k) for k in ("customer", "dealer", "sent")
+    keep = {k: request.form.get(k) for k in ("customer", "dealer", "phone", "sent")
             if request.form.get(k)}
     if not _CP_SEND_OK:
         flash("Send is unavailable — the credit send modules failed to load.", "error")

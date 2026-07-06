@@ -39,6 +39,10 @@
             <input type="checkbox" name="dealer" value="1" {{ 'checked' if f_dealer else '' }}>
             <span>Matching ADF dealer</span>
         </label>
+        <label class="check" style="flex-direction:row;align-items:center;gap:8px">
+            <input type="checkbox" name="phone" value="1" {{ 'checked' if f_phone else '' }}>
+            <span>Matching phone</span>
+        </label>
         <div class="field" style="max-width:180px">
             <label>Sent status</label>
             <select name="sent">
@@ -72,6 +76,7 @@
                     <input type="hidden" name="result_id" value="{{ r.result_id }}">
                     <input type="hidden" name="customer" value="{{ '1' if f_customer else '' }}">
                     <input type="hidden" name="dealer" value="{{ '1' if f_dealer else '' }}">
+                    <input type="hidden" name="phone" value="{{ '1' if f_phone else '' }}">
                     <input type="hidden" name="sent" value="{{ f_sent }}">
                     <button type="submit" class="btn" style="padding:4px 10px;font-size:12px;white-space:nowrap">Send Lead</button>
                 </form>

@@ -408,11 +408,12 @@ def _annotate_contact_flags(rows):
 
 
 def trigger_leads(matching_customer=False, matching_dealer=False,
-                  sent_status="unsent", limit=200):
+                  matching_phone=False, sent_status="unsent", limit=200):
     """The `limit` newest rows (by result_id, descending) from the CreditPipeline
     match_result feed joined to the ADF dealer and the sent ledger. Filters:
-    matching_customer (c.last_name not null), matching_dealer (d.dealer_name not
-    null), sent_status = unsent|sent|all.
+    matching_customer (Equifax consumer record found), matching_dealer
+    (d.dealer_name not null), matching_phone (a phone number resolved from any
+    source, i.e. the row's PH flag), sent_status = unsent|sent|all.
 
     Ordering note: the 4-table cross-linked-server join is only fast with
     result_id ASC (it streams the remote clustered index); ORDER BY result_id DESC
@@ -474,6 +475,11 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
         r["_addr"] = (payload.get("address_line_1") or "").strip()
         r["_zip"] = (r.get("consumer_zip") or payload.get("consumer_zip") or "").strip()
     _annotate_contact_flags(rows)
+    if matching_phone:
+        # has_phone is only known after enrichment (trigger view / tbl_ownership /
+        # Equifax consumer tables), which runs on the already-sliced rows — so this
+        # keeps the phone-having rows among the newest `limit`.
+        rows = [r for r in rows if r.get("has_phone")]
     return rows
 
 
