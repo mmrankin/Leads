@@ -71,7 +71,7 @@
         <thead><tr>
             <th>Action</th><th>Result</th><th>Customer</th><th title="Phone available from any source">PH</th><th title="Email available from any source">EM</th><th title="Vehicle (year/make) from tbl_ownership">VEH</th><th>CP Name</th><th title="Y when the ADF dealer name matches the CP retailer name (case-insensitive)">ADF Setup</th>
             <th>Trigger</th><th>Zip</th><th>Returned</th><th>Sent</th>
-            <th>Run grp</th><th>Run</th><th>Sub</th><th>Bucket</th><th>Candidate</th>
+            <th>Bucket</th>
             <th>Cust rec</th><th>Retailer</th><th>Stream</th><th>Payload</th>
         </tr></thead>
         <tbody>
@@ -102,11 +102,7 @@
             <td>{{ r.consumer_zip or '' }}</td>
             <td>{{ r.returned_at or '' }}</td>
             <td>{% if r.sent %}<span class="dot dot--sent"></span>{{ r.sent_at or 'yes' }}{% else %}<span class="muted">—</span>{% endif %}</td>
-            <td>{{ r.run_group_id }}</td>
-            <td>{{ r.run_id }}</td>
-            <td>{{ r.subscription_id }}</td>
             <td>{{ r.bucket_id }}</td>
-            <td>{{ r.candidate_id }}</td>
             <td>{{ r.customer_record_id }}</td>
             <td>{{ r.retailer_id }}</td>
             <td>{{ r.stream_session_id }}</td>
