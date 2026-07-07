@@ -397,6 +397,18 @@ def lead_volume():
     return render_template("volume.html", rows=leads_view.pipeline_volume())
 
 
+@app.route("/leads/volume/<dealer_id>/<period>")
+@require_login
+def dealer_leads(dealer_id, period):
+    dealer = pdb.get_dealer(dealer_id)
+    return render_template("dealer_leads.html", dealer_id=dealer_id,
+                           dealer_name=(dealer or {}).get("dealer_name") or dealer_id,
+                           period=period,
+                           period_label=leads_view.PERIOD_LABEL.get(period, period),
+                           rows=leads_view.dealer_sent_leads(dealer_id, period),
+                           on_volume=True)
+
+
 @app.route("/leads/funnel")
 @require_login
 def trigger_funnel():

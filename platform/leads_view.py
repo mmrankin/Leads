@@ -66,6 +66,51 @@ def pipeline_volume():
     return rows
 
 
+VOLUME_PERIODS = ("today", "yesterday", "this_month", "last_month")
+PERIOD_LABEL = {"today": "today", "yesterday": "yesterday",
+                "this_month": "this month", "last_month": "last month"}
+
+
+def dealer_sent_leads(dealer_id, period):
+    """The Credit Pipeline leads sent to a dealer in a Volume-report period
+    (today / yesterday / this_month / last_month) — driven by the same sent ledger
+    as the counts, so the row count matches the number clicked. Joined to
+    credit_leads (by result_id) for the customer name + lead-detail link."""
+    if period not in VOLUME_PERIODS:
+        return []
+    today = date.today()
+    tm = today.replace(day=1)
+    lm = (tm - timedelta(days=1)).replace(day=1)
+    yst = today - timedelta(days=1)
+    ranges = {
+        "today": (today.isoformat(), None),
+        "yesterday": (yst.isoformat(), today.isoformat()),
+        "this_month": (tm.isoformat(), None),
+        "last_month": (lm.isoformat(), tm.isoformat()),
+    }
+    start, end = ranges[period]
+    where = "s.created >= %(start)s" + (" AND s.created < %(end)s" if end else "")
+    sql = ("""SELECT cl.id AS lead_id, cl.first_name, cl.last_name,
+        cl.vehicle_year, cl.vehicle_make, cl.vehicle_model, cl.subsource,
+        s.result_id, CONVERT(varchar(19), s.created, 120) AS sent_at
+      FROM dlrPro.dbo.[sent] s
+      JOIN dlrPro.dbo.dealers d ON d.id = s.dealer_id
+      LEFT JOIN dlrPro.dbo.credit_leads cl ON cl.result_id = s.result_id
+      WHERE d.dealer_id = %(dc)s AND """ + where + " ORDER BY s.created DESC")
+    params = {"dc": dealer_id, "start": start}
+    if end:
+        params["end"] = end
+    try:
+        rows = dlr.query(sql, params)
+    except Exception:
+        return []
+    for r in rows:
+        r["CustomerName"] = " ".join(x for x in (r.get("first_name"), r.get("last_name")) if x).strip() or None
+        r["veh"] = " ".join(str(x) for x in (r.get("vehicle_year"), r.get("vehicle_make"),
+                                             r.get("vehicle_model")) if x).strip() or None
+    return rows
+
+
 def _fetch(table, dealer_id, limit):
     top = "TOP %d " % int(limit)
     try:

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ dealer_name }} <span class="muted">&mdash; {{ period_label }}</span></h1>
+<p class="subtitle">
+    Credit&nbsp;Pipeline leads sent to <strong>{{ dealer_name }}</strong> ({{ dealer_id }}) {{ period_label }}
+    (from the sent ledger), newest first.
+    <a href="{{ url_for('lead_volume') }}">&larr; back to Volume</a>
+</p>
+
+<div class="card">
+    <h2>Leads <span class="muted">({{ rows|length }})</span></h2>
+    {% if rows %}
+    <div style="overflow-x:auto">
+    <table class="tbl nowrap">
+        <thead><tr>
+            <th>Customer</th>
+            <th>Vehicle</th>
+            <th>Sub-source</th>
+            <th>Result</th>
+            <th>Sent</th>
+        </tr></thead>
+        <tbody>
+        {% for r in rows %}
+        <tr>
+            <td>{% if r.CustomerName %}{% if r.lead_id %}<a href="{{ url_for('lead_detail', product='CREDIT_EST', lead_id=r.lead_id) }}">{{ r.CustomerName }}</a>{% else %}{{ r.CustomerName }}{% endif %}{% else %}<span class="muted">&mdash;</span>{% endif %}</td>
+            <td>{{ r.veh if r.veh else '—' }}</td>
+            <td>{{ r.subsource if r.subsource else '—' }}</td>
+            <td class="muted">{{ r.result_id if r.result_id is not none else '—' }}</td>
+            <td>{{ r.sent_at or '' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="subtitle">No leads sent to this dealer {{ period_label }}.</p>
+    {% endif %}
+</div>
+{% endblock %}
