@@ -519,6 +519,18 @@ def trigger_send():
     return redirect(url_for("trigger_leads", **keep))
 
 
+@app.route("/trigger/<int:result_id>")
+@require_login
+def trigger_detail(result_id):
+    """Customer/trigger detail for a CreditPipeline match result_id — the link
+    target for a customer name whose trigger never became a sent lead."""
+    detail = leads_view.trigger_detail(result_id)
+    if not detail:
+        abort(404)
+    dealer = pdb.get_dealer(detail.get("dealer_code")) if detail.get("dealer_code") else None
+    return render_template("trigger_detail.html", d=detail, dealer=dealer)
+
+
 @app.route("/lead/<product>/<int:lead_id>")
 @require_login
 def lead_detail(product, lead_id):

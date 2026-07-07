@@ -836,6 +836,125 @@ def bucket_leads(bucket_type, limit=1000):
     return rows
 
 
+# ----- Trigger / customer detail (a single match_result, for the customer link on
+# trigger rows that never became a sent lead — no credit_leads row to open) -----
+
+_TRIGGER_DETAIL_SQL = """SELECT TOP 1
+  m.result_id, m.consumer_id, m.bucket_id, m.subscription_id, m.retailer_id,
+  m.customer_record_id, m.stream_session_id, m.consumer_zip,
+  r.retailer_name AS CPName, d.dealer_name AS ADFName, d.dealer_id AS dealer_code,
+  c.first_name AS cr_first, c.last_name AS cr_last,
+  CAST(m.matched_payload AS NVARCHAR(MAX)) AS matched_payload,
+  CONVERT(varchar(19), m.returned_at AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 120) AS returned_at,
+  s.id AS sent_id, CONVERT(varchar(19), s.created, 120) AS sent_at
+FROM [10.1.4.8].[CreditPipeline].[dbo].[match_result] m
+LEFT JOIN [10.1.4.8].[CreditPipeline].[dbo].[customer_record] c ON c.customer_record_id = m.customer_record_id
+LEFT JOIN [10.1.4.8].[CreditPipeline].[dbo].[retailer] r ON r.retailer_id = m.retailer_id
+LEFT JOIN dlrPro.dbo.dealers d ON d.dealer_id = r.retailer_code
+LEFT JOIN dlrPro.dbo.[sent] s ON d.id = s.dealer_id AND m.result_id = s.result_id
+WHERE m.result_id = %(rid)s"""
+
+_TRIGGER_VIEW_ONE_SQL = ("SELECT TOP 1 * FROM "
+    "[10.1.4.8].[CreditPipeline].[dbo].[vw_EquifaxConsumerRecordTriggers] "
+    "WHERE result_id = %(rid)s")
+
+
+def trigger_detail(result_id):
+    """Customer/trigger detail for a single CreditPipeline match `result_id`, built
+    from the match_result feed + the Equifax trigger view. This is the target for a
+    trigger row's customer link when the trigger never became a sent lead (so there
+    is no credit_leads row / lead-detail page). Returns a dict of display sections,
+    or None if the result_id isn't found."""
+    try:
+        rid = int(result_id)
+    except (TypeError, ValueError):
+        return None
+    try:
+        base = dlr.query(_TRIGGER_DETAIL_SQL, {"rid": rid}, timeout=60)
+    except Exception:
+        base = []
+    if not base:
+        return None
+    m = base[0]
+    try:
+        tv_rows = dlr.query(_TRIGGER_VIEW_ONE_SQL, {"rid": rid}, timeout=60)
+        tv = tv_rows[0] if tv_rows else {}
+    except Exception:
+        tv = {}
+    try:
+        payload = json.loads(m.get("matched_payload") or "{}") or {}
+    except (ValueError, TypeError):
+        payload = {}
+
+    def pick(*vals):
+        for v in vals:
+            s = str(v).strip() if v is not None else ""
+            if s:
+                return s
+        return ""
+
+    first = pick(tv.get("FirstName"), m.get("cr_first"), payload.get("first_name"))
+    last = pick(tv.get("LastName"), m.get("cr_last"), payload.get("last_name"))
+    name = (first + " " + last).strip() or None
+    phone = pick(tv.get("CellPhone"), tv.get("HomePhone"), tv.get("WorkPhone"), tv.get("AppendedPhone"))
+    email = pick(tv.get("Email"), tv.get("AppendedEmail"))
+    addr = pick(tv.get("Address1"), payload.get("address_line_1"))
+    city = pick(tv.get("City"), payload.get("city"))
+    state = pick(tv.get("State"), payload.get("state"))
+    zip_ = pick(tv.get("ZipCode"), m.get("consumer_zip"), payload.get("consumer_zip"))
+    veh = " ".join(x for x in (pick(tv.get("Year")), pick(tv.get("Make")), pick(tv.get("Model"))) if x)
+
+    bucket_type = pick(tv.get("bucketType"))
+    descriptor = pdb.subsource_map().get(bucket_type) if bucket_type else None
+    lead_id = _lead_ids_for_results([rid]).get(rid)
+    dash = "—"
+
+    sections = [
+        ("Customer", [
+            ("Name", name or dash),
+            ("Phone", phone or dash),
+            ("Email", email or dash),
+            ("Address", ", ".join(x for x in (addr, city, state, zip_) if x) or dash),
+            ("Consumer ID", pick(m.get("consumer_id")) or dash),
+        ]),
+        ("Vehicle", [
+            ("Vehicle", veh or dash),
+            ("VIN", pick(tv.get("VIN")) or dash),
+        ]),
+        ("Trigger", [
+            ("Trigger", pick(payload.get("trigger_id"), tv.get("bucketType")) or dash),
+            ("Bucket type", bucket_type or dash),
+            ("Sub-source", descriptor or dash),
+            ("Member ID", pick(payload.get("member_id")) or dash),
+            ("Returned (CST)", m.get("returned_at") or dash),
+        ]),
+        ("Credit", [
+            ("FICO Auto 8", pick(tv.get("fico_auto_8")) or dash),
+            ("FICO 8", pick(tv.get("fico_8")) or dash),
+            ("Vantage 4.0", pick(tv.get("vantage_score_4")) or dash),
+            ("Est. current balance", pick(tv.get("EstCurrentBalance")) or dash),
+            ("Est. payment", pick(tv.get("EstimatedPayment")) or dash),
+            ("Est. interest rate", pick(tv.get("EstimatedInterestRate")) or dash),
+            ("Est. term (months)", pick(tv.get("EstimatedTermInMonths")) or dash),
+        ]),
+        ("Dealer & delivery", [
+            ("CP retailer", pick(m.get("CPName")) or dash),
+            ("ADF dealer", pick(m.get("ADFName")) or dash),
+            ("Dealer code", pick(m.get("dealer_code")) or dash),
+            ("Sent", ("Yes · " + (m.get("sent_at") or "")).strip(" ·") if m.get("sent_id") else "No"),
+        ]),
+    ]
+    return {
+        "result_id": rid,
+        "name": name,
+        "sent": m.get("sent_id") is not None,
+        "lead_id": lead_id,
+        "dealer_code": pick(m.get("dealer_code")) or None,
+        "sections": sections,
+        "payload_pretty": json.dumps(payload, indent=2) if payload else "",
+    }
+
+
 def get_lead_detail(product, lead_id):
     """Return (row_dict, groups, adf_xml) for a single lead, or (None, [], None)."""
     if product == "TRADE_IN":

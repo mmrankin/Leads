@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Trigger #{{ d.result_id }}{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('trigger_leads') }}">← Trigger Leads</a></p>
+<h1>
+    {{ d.name or 'Customer' }}
+    <span class="pill pill--credit">Trigger</span>
+</h1>
+<p class="subtitle">
+    Match result #{{ d.result_id }}
+    {% if dealer %}· <a href="{{ url_for('dealer', dealer_id=dealer.dealer_id) }}">{{ dealer.dealer_name }}</a>{% endif %}
+    {% if d.lead_id %}· <a href="{{ url_for('lead_detail', product='CREDIT_EST', lead_id=d.lead_id) }}">view the sent lead →</a>{% endif %}
+</p>
+
+{% for title, fields in d.sections %}
+<div class="card">
+    <h2>{{ title }}</h2>
+    <table class="tbl kv">
+        <tbody>
+        {% for label, value in fields %}
+        <tr>
+            <th>{{ label }}</th>
+            <td>{% if value in (none, '', '—') %}<span class="muted">—</span>{% else %}{{ value }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endfor %}
+
+{% if d.payload_pretty %}
+<div class="card">
+    <h2>Matched payload</h2>
+    <pre class="adf">{{ d.payload_pretty }}</pre>
+</div>
+{% endif %}
+{% endblock %}

@@ -26,7 +26,7 @@
             {% endif %}
         </td>
         <td>{{ r.result_id }}</td>
-        <td>{% if r.CustomerName %}{% if r.lead_id %}<a href="{{ url_for('lead_detail', product='CREDIT_EST', lead_id=r.lead_id) }}">{{ r.CustomerName }}</a>{% else %}{{ r.CustomerName }}{% endif %}{% else %}—{% endif %}</td>
+        <td>{% if r.CustomerName %}{% if r.lead_id %}<a href="{{ url_for('lead_detail', product='CREDIT_EST', lead_id=r.lead_id) }}">{{ r.CustomerName }}</a>{% elif r.result_id %}<a href="{{ url_for('trigger_detail', result_id=r.result_id) }}">{{ r.CustomerName }}</a>{% else %}{{ r.CustomerName }}{% endif %}{% else %}—{% endif %}</td>
         <td>{% if r.has_phone %}<span style="color:#4fd1a5;font-weight:600">Y</span>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{% if r.has_email %}<span style="color:#4fd1a5;font-weight:600">Y</span>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{{ r.veh if r.veh else '—' }}</td>
