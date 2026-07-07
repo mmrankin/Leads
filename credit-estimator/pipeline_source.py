@@ -33,26 +33,40 @@ JOIN [{ls}].[{db}].[dbo].[retailer] r ON r.retailer_id = m.retailer_id
 JOIN dlrPro.dbo.dealers d ON d.dealer_id = r.retailer_code
 LEFT JOIN dlrPro.dbo.[sent] s ON s.dealer_id = d.id AND s.result_id = m.result_id
 LEFT JOIN dlrPro.dbo.pipeline_skips sk ON sk.dealer_id = d.id AND sk.result_id = m.result_id
-WHERE s.id IS NULL {skip_cond}
+WHERE s.id IS NULL {skip_cond} {grant_cond}
 ORDER BY m.result_id ASC"""
 
 # A record with no phone/email is retried at most this many times, then dropped.
 MAX_NO_CONTACT_ATTEMPTS = 3
 
+# Defense-in-depth: the automatic poller must never pull a record for a dealer that
+# is NOT currently on the CREDIT_PIPELINE product. This mirrors get_active_grant
+# (today within [valid_from, valid_to]; NULL bounds = unbounded) at the source, so a
+# dealer turned off the product stops getting automatic leads immediately — even
+# independently of the poller's eligible() check. (Manual admin sends skip this.)
+_ACTIVE_GRANT_COND = (
+    "AND EXISTS (SELECT 1 FROM dlrPro.dbo.dealer_products dp "
+    "WHERE dp.dealer_id = d.dealer_id AND dp.product_code = 'CREDIT_PIPELINE' "
+    "AND (dp.valid_from IS NULL OR dp.valid_from <= CONVERT(date, GETDATE())) "
+    "AND (dp.valid_to   IS NULL OR dp.valid_to   >= CONVERT(date, GETDATE())))")
+
 
 def fetch_unsent(limit=1000):
-    """Matched, not-yet-sent trigger-lead rows, excluding records that already hit
-    the no-contact retry cap."""
+    """Matched, not-yet-sent trigger-lead rows for dealers CURRENTLY on the
+    CREDIT_PIPELINE product, excluding records that already hit the no-contact
+    retry cap."""
     sql = _FETCH_SQL.format(limit=int(limit), ls=LINKED_SERVER, db=DB,
                             skip_cond="AND (sk.attempts IS NULL OR sk.attempts < %d)"
-                            % MAX_NO_CONTACT_ATTEMPTS)
+                            % MAX_NO_CONTACT_ATTEMPTS,
+                            grant_cond=_ACTIVE_GRANT_COND)
     return dlr.query(sql)
 
 
 def fetch_one(result_id):
     """One matched, not-yet-sent row for a specific result_id, or None. Ignores the
-    retry cap so an admin can always attempt a manual send."""
+    retry cap AND the active-grant filter so an admin can always attempt a manual
+    send (the poller's automatic path still enforces both)."""
     sql = _FETCH_SQL.format(limit=1, ls=LINKED_SERVER, db=DB,
-                            skip_cond="AND m.result_id = %(rid)s")
+                            skip_cond="AND m.result_id = %(rid)s", grant_cond="")
     rows = dlr.query(sql, {"rid": int(result_id)})
     return rows[0] if rows else None
