@@ -16,9 +16,9 @@ PRODUCT_TRADE_IN = "TRADE_IN"
 PRODUCT_CREDIT_EST = "CREDIT_EST"
 PRODUCT_CREDIT_PIPELINE = "CREDIT_PIPELINE"
 # CDP (cdp.dlrpro.com) modules — granted per dealer here, enforced by the CDP app.
-PRODUCT_CDP_VMS = "CDP_VMS"
-PRODUCT_CDP_CRM = "CDP_CRM"
-PRODUCT_CDP_PROSPECTING = "CDP_PROSPECTING"
+PRODUCT_CDP_VMS = "VMS"
+PRODUCT_CDP_CRM = "CDP"
+PRODUCT_CDP_PROSPECTING = "PROSPECTING"
 
 # The 4th tuple element is the product's default ADF "source" — the primary
 # (sequence=1) source name emitted on every outbound ADF/XML <id> for leads of
@@ -291,6 +291,20 @@ def count_active_grants(product_code, on_date=None):
         "AND (valid_to IS NULL OR valid_to>=%(t)s)",
         {"p": product_code, "t": today})
     return row["c"] if row else 0
+
+
+def active_grants_by_dealer(on_date=None):
+    """{dealer_id: set(product_code)} of grants active on the date (default today).
+    One query — used to render per-dealer product columns on the dealers list."""
+    today = on_date or date.today().isoformat()
+    rows = dlr.query(
+        "SELECT dealer_id, product_code FROM dealer_products "
+        "WHERE (valid_from IS NULL OR valid_from<=%(t)s) "
+        "AND (valid_to IS NULL OR valid_to>=%(t)s)", {"t": today})
+    out = {}
+    for r in rows:
+        out.setdefault(r["dealer_id"], set()).add(r["product_code"])
+    return out
 
 
 # ----- valuation settings -----

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "leads.html" import leads_table %}
 {% block content %}
-<p><a href="{{ url_for('index') }}">← All dealers</a></p>
+<p><a href="{{ url_for('dealers_list') }}">← All dealers</a></p>
 <h1>{{ dealer.dealer_name }} <span class="muted">({{ dealer.dealer_id }})</span></h1>
 
 <div class="card">

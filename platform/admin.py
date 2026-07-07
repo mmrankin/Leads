@@ -20,6 +20,7 @@ from flask import (
 
 import platform_db as pdb
 import leads_view
+import stats_view
 
 # The Credit Pipeline send path (build ADF -> email -> store -> record in `sent`)
 # lives in the credit app and is shared with the poller. Import it so the admin's
@@ -127,14 +128,57 @@ def logout():
 @app.route("/")
 @require_login
 def index():
+    return redirect(url_for("dealers_list"))
+
+
+@app.route("/dealers/add")
+@require_login
+def dealers_add():
     return render_template(
-        "admin.html",
-        dealers=pdb.list_dealers(),
+        "dealers_add.html",
         states=US_STATES,
         crm_types=pdb.list_crm_types(),
         lead_sources=pdb.list_lead_sources(),
         default_source=pdb.DEFAULT_LEAD_SOURCE,
+        on_dealers_add=True,
     )
+
+
+# Per-dealer product columns on the dealers list: (label, tooltip, product_code).
+DEALER_PRODUCT_COLS = [
+    ("CP", "Credit Pipeline product on", pdb.PRODUCT_CREDIT_PIPELINE),
+    ("TR", "Trade-In product on", pdb.PRODUCT_TRADE_IN),
+    ("CE", "Credit Estimator product on", pdb.PRODUCT_CREDIT_EST),
+    ("DL", "Dealer Lead Form product on", pdb.PRODUCT_LEAD_FORM),
+    ("VMS", "VMS system on", pdb.PRODUCT_CDP_VMS),
+    ("CDP", "CDP system on", pdb.PRODUCT_CDP_CRM),
+]
+
+
+@app.route("/dealers/list")
+@require_login
+def dealers_list():
+    return render_template(
+        "dealers_list.html",
+        dealers=pdb.list_dealers(),
+        product_cols=DEALER_PRODUCT_COLS,
+        grants=pdb.active_grants_by_dealer(),
+        on_dealers_list=True,
+    )
+
+
+@app.route("/stats/program")
+@require_login
+def stats_program():
+    return render_template("stats_program.html",
+                           s=stats_view.program_stats(), on_stats_program=True)
+
+
+@app.route("/stats/leads")
+@require_login
+def stats_leads():
+    return render_template("stats_leads.html",
+                           l=stats_view.lead_stats(), on_stats_leads=True)
 
 
 @app.route("/pipeline-flow", methods=["POST"])
@@ -248,7 +292,7 @@ def save_dealer():
     data["lead_source_id"] = int(src) if src else None
     if not (data["dealer_id"] and data["dealer_name"] and data["lead_email_address"]):
         flash("DealerID, Dealer Name and Lead Email Address are required.", "error")
-        return redirect(url_for("index"))
+        return redirect(url_for("dealers_add"))
     pdb.upsert_dealer(data)
     flash(f"Saved dealer {data['dealer_id']}.", "ok")
     return redirect(url_for("dealer", dealer_id=data["dealer_id"]))

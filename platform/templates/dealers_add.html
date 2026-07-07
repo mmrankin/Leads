@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Dealers</h1>
+
+<div class="card">
+    <h2>Add Dealer</h2>
+    <form method="post" action="{{ url_for('save_dealer') }}">
+        <div class="row">
+            <div class="field">
+                <label>DealerID <span class="req">*</span></label>
+                <input name="dealer_id">
+            </div>
+            <div class="field">
+                <label>Dealer Name <span class="req">*</span></label>
+                <input name="dealer_name">
+            </div>
+        </div>
+        <div class="field">
+            <label>Address</label>
+            <input name="address">
+        </div>
+        <div class="row">
+            <div class="field"><label>City</label><input name="city"></div>
+            <div class="field">
+                <label>State</label>
+                <select name="state"><option value=""></option>
+                {% for s in states %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="field"><label>Zip</label><input name="zip"></div>
+        </div>
+        <div class="row">
+            <div class="field"><label>Phone</label><input name="phone"></div>
+            <div class="field">
+                <label>Lead Email Address <span class="req">*</span></label>
+                <input name="lead_email_address">
+            </div>
+        </div>
+        <div class="field">
+            <label>Banner Image URL <span class="optional">(optional)</span></label>
+            <input name="banner_url" placeholder="https://...">
+        </div>
+        <div class="row">
+            <div class="field">
+                <label>CRM Type</label>
+                <select name="crm_type_id">
+                    <option value="">— none —</option>
+                    {% for c in crm_types %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label>Lead Source</label>
+                <select name="lead_source_id">
+                    {% for s in lead_sources %}<option value="{{ s.id }}" {{ 'selected' if s.name == default_source else '' }}>{{ s.name }}</option>{% endfor %}
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="btn">Add Dealer</button>
+    </form>
+</div>
+{% endblock %}

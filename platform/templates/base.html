@@ -21,9 +21,19 @@
                 <span class="tag">Dealer Lead Platform · Admin</span></div>
             <div class="nav-group">
                 <div class="nav-label">Manage</div>
-                <a class="nav-item {{ 'active' if not on_leads and not on_products and not on_crm and not on_sources and not on_triggers and not on_volume and not on_funnel else '' }}" href="{{ url_for('index') }}">
-                    <svg viewBox="0 0 24 24"><path d="M3 21h18M4 21V8l8-5 8 5v13M9 21v-6h6v6"/></svg>
-                    <span>Dealers</span></a>
+                <div class="nav-parent {{ 'open' if on_dealers_add or on_dealers_list else '' }}">
+                    <svg class="ic" viewBox="0 0 24 24"><path d="M3 21h18M4 21V8l8-5 8 5v13M9 21v-6h6v6"/></svg>
+                    <span>Dealers</span>
+                    <svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+                </div>
+                <div class="nav-sub {{ 'open' if on_dealers_add or on_dealers_list else '' }}">
+                    <a class="nav-item {{ 'active' if on_dealers_add else '' }}" href="{{ url_for('dealers_add') }}">
+                        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                        <span>Add</span></a>
+                    <a class="nav-item {{ 'active' if on_dealers_list else '' }}" href="{{ url_for('dealers_list') }}">
+                        <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+                        <span>List</span></a>
+                </div>
                 <div class="nav-parent {{ 'open' if on_leads or on_triggers or on_volume or on_funnel else '' }}">
                     <svg class="ic" viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 9h16M9 9v11"/></svg>
                     <span>Leads</span>
@@ -59,6 +69,15 @@
                         <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10"/></svg>
                         <span>Lead Sources</span></a>
                 </div>
+            </div>
+            <div class="nav-group">
+                <div class="nav-label">Statistics</div>
+                <a class="nav-item {{ 'active' if on_stats_program else '' }}" href="{{ url_for('stats_program') }}">
+                    <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+                    <span>Program</span></a>
+                <a class="nav-item {{ 'active' if on_stats_leads else '' }}" href="{{ url_for('stats_leads') }}">
+                    <svg viewBox="0 0 24 24"><path d="M4 4h11l5 5v11H4zM14 4v5h5M8 14h6M8 17h6"/></svg>
+                    <span>Leads</span></a>
             </div>
             <div class="side-meta">
                 Dealer Lead Platform<br>Lead Form · Trade-In · Credit Estimator

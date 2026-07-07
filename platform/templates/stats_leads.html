@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .kpis{display:flex;flex-wrap:wrap;gap:12px}
+  .kpi{flex:1 1 160px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px}
+  .kpi .v{font-size:24px;font-weight:700;color:var(--txt);line-height:1.1}
+  .kpi .s{font-size:11.5px;color:var(--dim);margin-top:5px}
+  .hbar{display:flex;align-items:center;gap:10px;margin:6px 0}
+  .hbar .lbl{flex:0 0 160px;font-size:13px}
+  .hbar .track{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:6px;height:16px;overflow:hidden}
+  .hbar .fill{height:100%;background:var(--accent)}
+  .hbar .n{flex:0 0 40px;text-align:right;color:var(--muted)}
+</style>
+<h1>Statistics &mdash; Leads</h1>
+<p class="subtitle">
+    Summarized credit, finance &amp; vehicle info from the <strong>{{ '{:,}'.format(l.total) }}</strong> credit leads.
+    Averages use only leads that carry a structured value (shown as <em>n</em>); Credit&nbsp;Pipeline bureau leads
+    keep their estimates in the ADF notes and aren't counted in these structured averages.
+</p>
+
+<div class="card">
+    <h2>Finance</h2>
+    <div class="kpis">
+        {% for m in l.finance %}
+        <div class="kpi"><div class="l">{{ m.label }}</div><div class="v">{{ m.value }}</div><div class="s">n = {{ m.n }}</div></div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="card">
+    <h2>Credit</h2>
+    <div class="kpis">
+        {% for m in l.credit %}
+        <div class="kpi"><div class="l">{{ m.label }}</div><div class="v">{{ m.value }}</div><div class="s">n = {{ m.n }}</div></div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="grid-2" style="display:flex;gap:16px;flex-wrap:wrap">
+<div class="card" style="flex:1 1 320px">
+    <h2>Credit tier mix</h2>
+    {% if l.tiers %}
+    {% set tmax = (l.tiers | map(attribute='n') | max) or 1 %}
+    {% for t in l.tiers %}
+    <div class="hbar"><div class="lbl">{{ t.tier }}</div>
+        <div class="track"><div class="fill" style="width:{{ (100 * t.n / tmax) | round(1) }}%"></div></div>
+        <div class="n">{{ t.n }}</div></div>
+    {% endfor %}
+    {% else %}<p class="subtitle">No tier data yet.</p>{% endif %}
+</div>
+
+<div class="card" style="flex:1 1 320px">
+    <h2>Top vehicle makes</h2>
+    {% if l.by_make %}
+    {% set mmax = (l.by_make | map(attribute='n') | max) or 1 %}
+    {% for m in l.by_make %}
+    <div class="hbar"><div class="lbl">{{ m.make | title }}</div>
+        <div class="track"><div class="fill" style="width:{{ (100 * m.n / mmax) | round(1) }}%"></div></div>
+        <div class="n">{{ m.n }}</div></div>
+    {% endfor %}
+    {% else %}<p class="subtitle">No vehicle data yet.</p>{% endif %}
+</div>
+</div>
+
+{% if l.by_year %}
+<div class="card">
+    <h2>Requested vehicles by model year</h2>
+    <table class="tbl">
+        <thead><tr><th>Model year</th><th class="num">Leads</th></tr></thead>
+        <tbody>{% for y in l.by_year %}<tr><td>{{ y.yr }}</td><td class="num">{{ y.n }}</td></tr>{% endfor %}</tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}

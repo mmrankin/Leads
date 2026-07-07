@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Dealers</h1>
+
+<div class="card">
+    <h2>All Dealers ({{ dealers|length }})</h2>
+    {% if dealers %}
+    <table class="tbl">
+        <thead><tr>
+            <th>DealerID</th><th>Name</th><th>City/State</th><th>Lead Email</th>
+            {% for label, tip, code in product_cols %}<th class="pcol" title="{{ tip }}">{{ label }}</th>{% endfor %}
+            <th></th>
+        </tr></thead>
+        <tbody>
+        {% for d in dealers %}
+        <tr>
+            <td>{{ d.dealer_id }}</td>
+            <td>{{ d.dealer_name }}</td>
+            <td>{{ d.city or '' }}{{ ', ' + d.state if d.state else '' }}</td>
+            <td>{{ d.lead_email_address }}</td>
+            {% for label, tip, code in product_cols %}
+            <td class="pcol">{% if code in grants.get(d.dealer_id, []) %}<span class="on" title="{{ tip }}">✓</span>{% else %}<span class="off">–</span>{% endif %}</td>
+            {% endfor %}
+            <td><a href="{{ url_for('dealer', dealer_id=d.dealer_id) }}">manage →</a></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <style>
+        .tbl th.pcol, .tbl td.pcol { text-align: center; width: 3rem; }
+        .tbl td.pcol .on { color: #1d9e75; font-weight: 700; }
+        .tbl td.pcol .off { color: #556; }
+    </style>
+    {% else %}
+    <p class="subtitle">No dealers yet. Add one under <b>Dealers → Add</b>.</p>
+    {% endif %}
+</div>
+{% endblock %}
