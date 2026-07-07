@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Trigger Buckets</h1>
+<p class="subtitle">
+    Credit Pipeline triggers grouped by <strong>secondary source</strong> (the trigger sub-source),
+    with how many were <strong>triggered</strong> from the Equifax feed vs how many were
+    <strong>sent</strong> to a dealer (in the sent ledger).
+</p>
+
+<div class="card">
+    <h2>By secondary source <span class="muted">({{ buckets|length }})</span></h2>
+    {% if buckets %}
+    <div style="overflow-x:auto">
+    <table class="tbl">
+        <thead><tr>
+            <th>Secondary source</th>
+            <th class="num">Triggered</th>
+            <th class="num">Sent</th>
+            <th class="num" title="Sent as a share of triggered">Sent %</th>
+        </tr></thead>
+        <tbody>
+        {% for b in buckets %}
+        <tr>
+            <td>{{ b.bucket }}</td>
+            <td class="num">{{ b.triggered }}</td>
+            <td class="num">{{ b.sent }}</td>
+            <td class="num muted">{{ b.sent_pct }}%</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+        <tfoot>
+        <tr style="font-weight:700;border-top:2px solid var(--line)">
+            <td>Total</td>
+            <td class="num">{{ buckets|sum(attribute='triggered') }}</td>
+            <td class="num">{{ buckets|sum(attribute='sent') }}</td>
+            <td></td>
+        </tr>
+        </tfoot>
+    </table>
+    </div>
+    {% else %}
+    <p class="subtitle">No trigger data yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -371,6 +371,13 @@ def trigger_funnel():
                            chart_svg=leads_view.by_day_chart_svg(days))
 
 
+@app.route("/leads/buckets")
+@require_login
+def lead_buckets():
+    return render_template("buckets.html",
+                           buckets=leads_view.bucket_report(), on_buckets=True)
+
+
 @app.route("/trigger-leads")
 @require_login
 def trigger_leads():

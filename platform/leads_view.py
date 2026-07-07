@@ -679,6 +679,47 @@ def by_day_chart_svg(days, width=760, height=300):
     return "".join(p)
 
 
+# ----- Trigger buckets: leads by secondary source (trigger sub-source) -----
+
+# trigger_id -> readable sub-source label. Keep in sync with
+# pipeline_poller._TRIGGER_DESC (the feed currently sends no trigger_desc).
+_TRIGGER_LABELS = {"AUPRQ": "Auto Prequalification Inquiry"}
+
+_BUCKET_SQL = ("""SELECT
+  JSON_VALUE(CAST(m.matched_payload AS nvarchar(max)), '$.trigger_desc') AS trigger_desc,
+  JSON_VALUE(CAST(m.matched_payload AS nvarchar(max)), '$.trigger_id') AS trigger_id,
+  COUNT(*) AS triggered,
+  SUM(CASE WHEN s.result_id IS NOT NULL THEN 1 ELSE 0 END) AS sent
+FROM {cp}.[match_result] m
+LEFT JOIN (SELECT DISTINCT result_id FROM dlrPro.dbo.[sent]) s ON s.result_id = m.result_id
+GROUP BY JSON_VALUE(CAST(m.matched_payload AS nvarchar(max)), '$.trigger_desc'),
+         JSON_VALUE(CAST(m.matched_payload AS nvarchar(max)), '$.trigger_id')""").format(cp=_CP_LS)
+
+
+def bucket_report():
+    """Credit Pipeline triggers grouped by secondary source (the trigger
+    sub-source: matched_payload trigger_desc, else the mapped/raw trigger_id),
+    with total triggered vs total sent (result_id present in the sent ledger).
+    Scales to however many trigger types the feed carries. Newest label first by
+    triggered volume."""
+    try:
+        raw = dlr.query(_BUCKET_SQL, timeout=120)
+    except Exception:
+        return []
+    agg = {}
+    for r in raw:
+        desc = (r.get("trigger_desc") or "").strip()
+        tid = (r.get("trigger_id") or "").strip()
+        label = desc or _TRIGGER_LABELS.get(tid, tid) or "(unlabeled)"
+        b = agg.setdefault(label, {"bucket": label, "triggered": 0, "sent": 0})
+        b["triggered"] += int(r.get("triggered") or 0)
+        b["sent"] += int(r.get("sent") or 0)
+    out = sorted(agg.values(), key=lambda x: x["triggered"], reverse=True)
+    for b in out:
+        b["sent_pct"] = round(100 * b["sent"] / b["triggered"]) if b["triggered"] else 0
+    return out
+
+
 def get_lead_detail(product, lead_id):
     """Return (row_dict, groups, adf_xml) for a single lead, or (None, [], None)."""
     if product == "TRADE_IN":
