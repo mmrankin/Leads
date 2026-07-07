@@ -1,0 +1,54 @@
+{% if funnel %}
+{% set total = funnel.total_triggers or 1 %}
+{% set stages = [
+    ('Triggers from Equifax', funnel.total_triggers, false),
+    ('Matched to a dealer', funnel.matched_dealer, false),
+    ('Has phone number', funnel.has_phone, false),
+    ('Has email address', funnel.has_email, false),
+    ('Has vehicle', funnel.has_vehicle, true),
+    ('Has credit score', funnel.has_score, false),
+    ('Has estimated credit value(s)', funnel.has_estimate, false),
+] %}
+<div class="card">
+    <h2>Funnel <span class="muted">({{ funnel.total_triggers }} triggers · {{ funnel.start }} → today)</span></h2>
+    <div style="overflow-x:auto">
+    <table class="tbl funnel">
+        <thead><tr>
+            <th>Stage</th>
+            <th class="num">Count</th>
+            <th class="num">% of triggers</th>
+            <th></th>
+        </tr></thead>
+        <tbody>
+        {% for label, n, enriched in stages %}
+        <tr>
+            <td class="lbl">{{ label }}{% if enriched %} <span class="muted" title="Includes data appended from the ownership + Equifax consumer databases">*</span>{% endif %}</td>
+            <td class="num">{{ n }}</td>
+            <td class="num muted">{{ (100 * n / total) | round(0, 'floor') | int }}%</td>
+            <td class="barcell"><span class="fbar {{ 'dim' if enriched else '' }}" style="width:{{ (100 * n / total) | round(1) }}%"></span></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <p class="subtitle" style="margin-top:12px">
+        <span class="muted">*</span> Vehicle is appended from the ownership database (the raw
+        Equifax trigger rarely carries one). Phone, email, credit score and estimated value
+        come straight from the Equifax trigger view.
+    </p>
+</div>
+
+<div class="card">
+    <h2>Matched vs. Sent by day</h2>
+    <div class="chart-wrap">{{ chart_svg | safe }}</div>
+    <div class="legend">
+        <span class="key bar"></span> Triggers matched to a dealer
+        <span class="key line"></span> Trigger leads sent
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <p class="subtitle">Couldn't load the funnel — the CreditPipeline linked-server feed
+    may be temporarily unavailable. Reload to try again.</p>
+</div>
+{% endif %}

@@ -412,14 +412,25 @@ def dealer_leads(dealer_id, period):
 @app.route("/leads/funnel")
 @require_login
 def trigger_funnel():
+    # Fast shell — the slow funnel (vehicle enrichment) loads async with a spinner.
+    window = request.args.get("window", "month")
+    if window not in leads_view.FUNNEL_WINDOWS:
+        window = "month"
+    return render_template("trigger_funnel.html", window=window)
+
+
+@app.route("/leads/funnel/data")
+@require_login
+def trigger_funnel_data():
     window = request.args.get("window", "month")
     if window not in leads_view.FUNNEL_WINDOWS:
         window = "month"
     days = leads_view.pipeline_by_day(window)
-    return render_template("trigger_funnel.html",
+    html = render_template("_funnel_body.html",
                            funnel=leads_view.pipeline_funnel(window),
                            window=window,
                            chart_svg=leads_view.by_day_chart_svg(days))
+    return jsonify(html=html)
 
 
 @app.route("/leads/buckets")
