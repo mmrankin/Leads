@@ -1,0 +1,58 @@
+<h2>Results <span class="muted">({{ rows|length }}{{ '+' if rows|length == 1000 else '' }})</span></h2>
+{% if rows %}
+<div style="overflow-x:auto">
+<table class="tbl nowrap">
+    <thead><tr>
+        <th>Action</th><th>Result</th><th>Customer</th><th title="Phone available from any source">PH</th><th title="Email available from any source">EM</th><th title="Vehicle (year/make) from tbl_ownership">VEH</th><th>CP Name</th><th title="Y when the ADF dealer name matches the CP retailer name (case-insensitive)">ADF Setup</th><th title="Y when the dealer has the Credit Pipeline product set up (active grant)">CP</th>
+        <th>Trigger</th><th>Zip</th><th>Returned</th><th>Sent</th>
+        <th>Bucket</th>
+        <th>Cust rec</th><th>Retailer</th><th>Stream</th><th>Payload</th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+        <td>
+            {% if not r.sent and can_send %}
+            <form method="post" action="{{ url_for('trigger_send') }}" style="margin:0"
+                  onsubmit="return confirm('Send this lead to the dealer now?')">
+                <input type="hidden" name="result_id" value="{{ r.result_id }}">
+                <input type="hidden" name="applied" value="1">
+                <input type="hidden" name="customer" value="{{ '1' if f_customer else '' }}">
+                <input type="hidden" name="dealer" value="{{ '1' if f_dealer else '' }}">
+                <input type="hidden" name="phone" value="{{ '1' if f_phone else '' }}">
+                <input type="hidden" name="sent" value="{{ f_sent }}">
+                <button type="submit" class="btn" style="padding:4px 10px;font-size:12px;white-space:nowrap">Send Lead</button>
+            </form>
+            {% endif %}
+        </td>
+        <td>{{ r.result_id }}</td>
+        <td>{{ r.CustomerName if r.CustomerName is not none else '—' }}</td>
+        <td>{% if r.has_phone %}<span style="color:#4fd1a5;font-weight:600">Y</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.has_email %}<span style="color:#4fd1a5;font-weight:600">Y</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{{ r.veh if r.veh else '—' }}</td>
+        <td>{{ r.CPName if r.CPName is not none else '—' }}</td>
+        <td>{% if r.ADFName and r.CPName and r.ADFName|trim|lower == r.CPName|trim|lower %}<span style="color:#4fd1a5;font-weight:600">Y</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.cp_setup %}<span style="color:#4fd1a5;font-weight:600">Y</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{{ r.trigger or '—' }}</td>
+        <td>{{ r.consumer_zip or '' }}</td>
+        <td>{{ r.returned_at or '' }}</td>
+        <td>{% if r.sent %}<span class="dot dot--sent"></span>{{ r.sent_at or 'yes' }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{{ r.bucket_id }}</td>
+        <td>{{ r.customer_record_id }}</td>
+        <td>{{ r.retailer_id }}</td>
+        <td>{{ r.stream_session_id }}</td>
+        <td>
+            {% if r.matched_payload %}
+            <a href="#" class="pl-view" data-payload="{{ r.payload_pretty }}">
+                {{ (r.matched_payload or '')[:32] }}{{ '…' if (r.matched_payload or '')|length > 32 else '' }}
+            </a>
+            {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p class="subtitle">No matching rows for the current filters.</p>
+{% endif %}

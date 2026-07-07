@@ -15,7 +15,7 @@ except ImportError:
     pass
 
 from flask import (
-    Flask, abort, flash, redirect, render_template, request, session, url_for
+    Flask, abort, flash, jsonify, redirect, render_template, request, session, url_for
 )
 
 import platform_db as pdb
@@ -426,12 +426,10 @@ def bucket_leads(bucket_type):
                            rows=leads_view.bucket_leads(bucket_type), on_buckets=True)
 
 
-@app.route("/trigger-leads")
-@require_login
-def trigger_leads():
-    # "applied" marks a real form submission; on a fresh visit (no applied) the
-    # phone filter defaults ON, but once the form is applied we respect an
-    # unchecked box (otherwise a default-on box could never be turned off).
+def _trigger_filters():
+    """(f_customer, f_dealer, f_phone, f_sent) from request.args. "applied" marks a
+    real form submission; on a fresh visit (no applied) the phone filter defaults
+    ON, but once applied we respect an unchecked box."""
     applied = request.args.get("applied") == "1"
     f_customer = request.args.get("customer") == "1"
     f_dealer = request.args.get("dealer") == "1"
@@ -439,15 +437,33 @@ def trigger_leads():
     f_sent = request.args.get("sent", "unsent")
     if f_sent not in ("unsent", "sent", "all"):
         f_sent = "unsent"
-    rows = leads_view.trigger_leads(matching_customer=f_customer,
-                                    matching_dealer=f_dealer, matching_phone=f_phone,
-                                    sent_status=f_sent)
-    return render_template("trigger_leads.html", rows=rows,
-                           f_customer=f_customer, f_dealer=f_dealer, f_phone=f_phone,
-                           f_sent=f_sent,
+    return f_customer, f_dealer, f_phone, f_sent
+
+
+@app.route("/trigger-leads")
+@require_login
+def trigger_leads():
+    # Fast shell — the slow results table and "available to send" count load async
+    # (with a spinner) from /trigger-leads/data so the page paints immediately.
+    f_customer, f_dealer, f_phone, f_sent = _trigger_filters()
+    return render_template("trigger_leads.html",
+                           f_customer=f_customer, f_dealer=f_dealer, f_phone=f_phone, f_sent=f_sent,
                            pipeline_flow=pdb.get_pipeline_flow(), can_send=_CP_SEND_OK,
-                           sent_today=pdb.sent_today_total(),
-                           available_to_send=leads_view.available_to_send_count())
+                           sent_today=pdb.sent_today_total())
+
+
+@app.route("/trigger-leads/data")
+@require_login
+def trigger_leads_data():
+    """The slow half of the Trigger Leads page (enriched rows + available count),
+    returned as JSON for the async load."""
+    f_customer, f_dealer, f_phone, f_sent = _trigger_filters()
+    rows = leads_view.trigger_leads(matching_customer=f_customer, matching_dealer=f_dealer,
+                                    matching_phone=f_phone, sent_status=f_sent)
+    results_html = render_template("_trigger_rows.html", rows=rows, can_send=_CP_SEND_OK,
+                                   f_customer=f_customer, f_dealer=f_dealer,
+                                   f_phone=f_phone, f_sent=f_sent)
+    return jsonify(available=leads_view.available_to_send_count(), results_html=results_html)
 
 
 @app.route("/trigger-send", methods=["POST"])
