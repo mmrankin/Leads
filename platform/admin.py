@@ -449,7 +449,8 @@ def trigger_leads():
     return render_template("trigger_leads.html",
                            f_customer=f_customer, f_dealer=f_dealer, f_phone=f_phone, f_sent=f_sent,
                            pipeline_flow=pdb.get_pipeline_flow(), can_send=_CP_SEND_OK,
-                           sent_today=pdb.sent_today_total())
+                           sent_today=pdb.sent_today_total(),
+                           no_phone_today=pdb.no_phone_today())
 
 
 @app.route("/trigger-leads/data")

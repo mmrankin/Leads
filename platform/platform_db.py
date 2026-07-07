@@ -592,6 +592,14 @@ def sent_today_total():
     return int(row["c"]) if row else 0
 
 
+def no_phone_today():
+    """Count of leads the poller skipped for no phone today — one row per
+    (dealer, result_id) in dbo.pipeline_skips whose last attempt was today."""
+    row = dlr.one(
+        "SELECT COUNT_BIG(*) AS c FROM dbo.pipeline_skips WHERE last_at >= CAST(GETDATE() AS date)")
+    return int(row["c"]) if row else 0
+
+
 def recently_sent(dealers_id, minutes):
     """True if this dealer (dealers.id) has a Credit Pipeline send within the last
     `minutes` minutes (by the sent ledger's `created`, DB clock) — used to space
