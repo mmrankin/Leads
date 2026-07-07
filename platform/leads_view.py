@@ -510,7 +510,13 @@ _FUNNEL_AGG_SQL = ("""SELECT
             OR TRY_CAST(t.EstimatedInterestRate AS float) > 0
             OR TRY_CAST(t.EstimatedAmountFinanced AS float) > 0
             OR TRY_CAST(t.EstimatedNumberOfRemainingPayments AS int) > 0
-            OR TRY_CAST(t.EstimatedTermInMonths AS int) > 0 THEN 1 ELSE 0 END) AS has_estimate
+            OR TRY_CAST(t.EstimatedTermInMonths AS int) > 0 THEN 1 ELSE 0 END) AS has_estimate,
+  SUM(CASE WHEN NULLIF(LTRIM(RTRIM(t.CellPhone)),'') IS NOT NULL
+            OR NULLIF(LTRIM(RTRIM(t.HomePhone)),'') IS NOT NULL
+            OR NULLIF(LTRIM(RTRIM(t.WorkPhone)),'') IS NOT NULL
+            OR NULLIF(LTRIM(RTRIM(t.AppendedPhone)),'') IS NOT NULL THEN 1 ELSE 0 END) AS has_phone,
+  SUM(CASE WHEN NULLIF(LTRIM(RTRIM(t.Email)),'') IS NOT NULL
+            OR NULLIF(LTRIM(RTRIM(t.AppendedEmail)),'') IS NOT NULL THEN 1 ELSE 0 END) AS has_email
 FROM {cp}.[match_result] m
 LEFT JOIN {cp}.[vw_EquifaxConsumerRecordTriggers] t ON t.result_id = m.result_id
 LEFT JOIN {cp}.[retailer] r ON r.retailer_id = m.retailer_id
@@ -554,8 +560,9 @@ def _funnel_window_start(window):
 
 def pipeline_funnel(window="month"):
     """Trigger-pipeline funnel counts over the window. total/matched/score/estimate
-    are exact single-pass SQL counts; phone/email/vehicle reuse the Trigger Leads
-    enrichment (3 sources, payload identity) so they match the page's PH/EM/VEH."""
+    AND phone/email are exact single-pass SQL counts straight from the Equifax
+    trigger view (no tbl_ownership / Equifax-consumer-table appends). Only vehicle
+    still uses the tbl_ownership enrichment (the trigger has no vehicle)."""
     start = _funnel_window_start(window).isoformat()
     try:
         agg = dlr.query(_FUNNEL_AGG_SQL, {"start": start}, timeout=120)[0]
@@ -580,8 +587,8 @@ def pipeline_funnel(window="month"):
         "start": start,
         "total_triggers": int(agg.get("total_triggers") or 0),
         "matched_dealer": int(agg.get("matched_dealer") or 0),
-        "has_phone": sum(1 for r in rows if r.get("has_phone")),
-        "has_email": sum(1 for r in rows if r.get("has_email")),
+        "has_phone": int(agg.get("has_phone") or 0),   # trigger view only
+        "has_email": int(agg.get("has_email") or 0),   # trigger view only
         "has_vehicle": sum(1 for r in rows if (r.get("veh") or "").strip()),
         "has_score": int(agg.get("has_score") or 0),
         "has_estimate": int(agg.get("has_estimate") or 0),

@@ -43,8 +43,8 @@
 {% set stages = [
     ('Triggers from Equifax', funnel.total_triggers, false),
     ('Matched to a dealer', funnel.matched_dealer, false),
-    ('Has phone number', funnel.has_phone, true),
-    ('Has email address', funnel.has_email, true),
+    ('Has phone number', funnel.has_phone, false),
+    ('Has email address', funnel.has_email, false),
     ('Has vehicle', funnel.has_vehicle, true),
     ('Has credit score', funnel.has_score, false),
     ('Has estimated credit value', funnel.has_estimate, false),
@@ -72,9 +72,9 @@
     </table>
     </div>
     <p class="subtitle" style="margin-top:12px">
-        <span class="muted">*</span> Phone, email and vehicle include values appended from the
-        ownership and Equifax consumer databases (same as the Trigger Leads PH/EM/VEH flags),
-        not only what the raw Equifax trigger carried.
+        <span class="muted">*</span> Vehicle is appended from the ownership database (the raw
+        Equifax trigger rarely carries one). Phone, email, credit score and estimated value
+        come straight from the Equifax trigger view.
     </p>
 </div>
 
