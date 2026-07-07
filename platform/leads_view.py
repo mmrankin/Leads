@@ -754,16 +754,44 @@ LEFT JOIN (SELECT DISTINCT result_id FROM dlrPro.dbo.[sent]) s ON s.result_id = 
 GROUP BY t.bucketType""").format(cp=_CP_LS)
 
 
+# The sub-source actually stamped on the sent leads (credit_leads.subsource),
+# keyed by bucketType — so the report can show what the outbound leads carry vs
+# the configured descriptor. (These are equal today; this exposes any drift.)
+_BUCKET_SUBSOURCE_SQL = ("""SELECT t.bucketType AS bucket_type, cl.subsource AS subsource
+FROM dlrPro.dbo.credit_leads cl
+JOIN {cp}.[vw_EquifaxConsumerRecordTriggers] t ON t.result_id = cl.result_id
+WHERE cl.result_id IS NOT NULL AND cl.subsource IS NOT NULL AND cl.subsource <> ''
+GROUP BY t.bucketType, cl.subsource""").format(cp=_CP_LS)
+
+
+def _bucket_subsource_map():
+    """{bucketType: 'sub-source, sub-source, …'} — the distinct subsource strings
+    stamped on the sent leads of each bucket. Empty on error (report degrades to
+    a dash rather than failing)."""
+    try:
+        rows = dlr.query(_BUCKET_SUBSOURCE_SQL, timeout=120)
+    except Exception:
+        return {}
+    by_bt = {}
+    for r in rows:
+        bt = (r.get("bucket_type") or "").strip() or "(none)"
+        ss = (r.get("subsource") or "").strip()
+        if ss:
+            by_bt.setdefault(bt, []).append(ss)
+    return {bt: ", ".join(sorted(set(v))) for bt, v in by_bt.items()}
+
+
 def bucket_report():
     """Credit Pipeline triggers grouped by secondary source (Equifax `bucketType`),
-    with total triggered vs total sent (result_id present in the sent ledger) and
-    the admin-mapped descriptor. Highest triggered volume first. Scales to however
-    many bucketTypes the feed carries."""
+    with total triggered vs total sent (result_id present in the sent ledger), the
+    admin-mapped descriptor, and the sub-source stamped on the sent leads. Highest
+    triggered volume first. Scales to however many bucketTypes the feed carries."""
     try:
         raw = dlr.query(_BUCKET_SQL, timeout=120)
     except Exception:
         return []
     smap = pdb.subsource_map()
+    ssmap = _bucket_subsource_map()
     out = []
     for r in raw:
         bt = (r.get("bucket_type") or "").strip() or "(none)"
@@ -772,6 +800,7 @@ def bucket_report():
         out.append({
             "bucket_type": bt,
             "descriptor": smap.get(bt, ""),
+            "subsource": ssmap.get(bt, ""),
             "triggered": triggered,
             "sent": sent,
             "sent_pct": round(100 * sent / triggered) if triggered else 0,

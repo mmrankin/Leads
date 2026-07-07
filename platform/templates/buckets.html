@@ -15,6 +15,7 @@
         <thead><tr>
             <th>Secondary source</th>
             <th>Bucket type</th>
+            <th title="Sub-source stamped on the sent leads (credit_leads.subsource)">Sub-source</th>
             <th class="num">Triggered</th>
             <th class="num">Sent</th>
             <th class="num" title="Sent as a share of triggered">Sent %</th>
@@ -24,6 +25,7 @@
         <tr>
             <td><a href="{{ url_for('bucket_leads', bucket_type=b.bucket_type) }}">{{ b.descriptor or b.bucket_type }}</a></td>
             <td class="muted">{{ b.bucket_type }}</td>
+            <td>{{ b.subsource if b.subsource else '—' }}</td>
             <td class="num">{{ b.triggered }}</td>
             <td class="num">{{ b.sent }}</td>
             <td class="num muted">{{ b.sent_pct }}%</td>
@@ -33,6 +35,7 @@
         <tfoot>
         <tr style="font-weight:700;border-top:2px solid var(--line)">
             <td>Total</td>
+            <td></td>
             <td></td>
             <td class="num">{{ buckets|sum(attribute='triggered') }}</td>
             <td class="num">{{ buckets|sum(attribute='sent') }}</td>
