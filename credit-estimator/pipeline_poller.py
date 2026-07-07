@@ -286,7 +286,26 @@ def run(dry_run=False):
              "dry-run" if dry_run else "live", len(rows), counts)
 
 
+def _acquire_run_lock():
+    """Single-instance lock so overlapping runs can't race (a run can take minutes
+    when there's a backlog, but launchd fires every minute). Returns the held file
+    handle, or None if another run already holds it. The lock releases when the
+    process exits."""
+    import fcntl
+    import tempfile
+    fh = open(os.path.join(tempfile.gettempdir(), "credit_pipeline_poller.lock"), "w")
+    try:
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fh
+    except (IOError, OSError):
+        return None
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
+    _lock = _acquire_run_lock()
+    if _lock is None:
+        LOG.info("Another poller run is in progress — skipping this tick.")
+        sys.exit(0)
     run(dry_run="--dry-run" in sys.argv[1:])
