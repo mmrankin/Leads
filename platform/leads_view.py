@@ -718,6 +718,59 @@ def bucket_report():
     return out
 
 
+# Lead detail for a single bucketType — the fast (unenriched) join, newest first.
+_BUCKET_LEADS_SQL = ("""SELECT TOP {limit}
+  m.result_id,
+  c.first_name AS cr_first, c.last_name AS cr_last,
+  c.year AS vehicle_year, c.make AS vehicle_make, c.model AS vehicle_model,
+  CAST(m.matched_payload AS nvarchar(max)) AS matched_payload, m.consumer_zip,
+  r.retailer_name AS CPName, d.dealer_name AS ADFName,
+  CONVERT(varchar(19), m.returned_at AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 120) AS returned_at,
+  s.id AS sent_id, CONVERT(varchar(19), s.created, 120) AS sent_at
+FROM {cp}.[match_result] m
+LEFT JOIN {cp}.[customer_record] c ON c.customer_record_id = m.customer_record_id
+LEFT JOIN {cp}.[retailer] r ON r.retailer_id = m.retailer_id
+LEFT JOIN dlrPro.dbo.dealers d ON d.dealer_id = r.retailer_code
+LEFT JOIN dlrPro.dbo.[sent] s ON s.dealer_id = d.id AND s.result_id = m.result_id
+WHERE m.result_id IN ({ids})
+ORDER BY m.result_id ASC""")
+
+
+def bucket_leads(bucket_type, limit=1000):
+    """All Credit Pipeline triggers for a bucketType (the Buckets drill-down):
+    result / customer / vehicle / CP+ADF dealer / zip / returned / sent. Two steps
+    (bucketType -> result_ids, then a fast join by result_id) to avoid adding the
+    trigger view to the main join; no tbl_ownership enrichment. Newest first."""
+    try:
+        ids = [int(r["result_id"]) for r in dlr.query(
+            "SELECT result_id FROM {cp}.[vw_EquifaxConsumerRecordTriggers] "
+            "WHERE bucketType = %(bt)s".format(cp=_CP_LS), {"bt": bucket_type}, timeout=120)
+            if r.get("result_id") is not None]
+    except Exception:
+        return []
+    if not ids:
+        return []
+    idlist = ",".join(str(i) for i in ids[:5000])
+    try:
+        rows = dlr.query(_BUCKET_LEADS_SQL.format(cp=_CP_LS, ids=idlist, limit=int(limit)), timeout=120)
+    except Exception:
+        return []
+    rows.sort(key=lambda r: int(r["result_id"]) if r.get("result_id") is not None else -1, reverse=True)
+    rows = rows[:int(limit)]
+    for r in rows:
+        r["sent"] = r.get("sent_id") is not None
+        try:
+            payload = json.loads(r.get("matched_payload") or "{}") or {}
+        except (ValueError, TypeError):
+            payload = {}
+        cr = " ".join(x for x in (r.get("cr_first"), r.get("cr_last")) if x).strip()
+        pl = " ".join(x for x in (payload.get("first_name"), payload.get("last_name")) if x).strip()
+        r["CustomerName"] = cr or pl or None
+        r["veh"] = " ".join(str(x) for x in (r.get("vehicle_year"), r.get("vehicle_make"),
+                                             r.get("vehicle_model")) if x).strip() or None
+    return rows
+
+
 def get_lead_detail(product, lead_id):
     """Return (row_dict, groups, adf_xml) for a single lead, or (None, [], None)."""
     if product == "TRADE_IN":

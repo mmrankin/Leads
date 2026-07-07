@@ -22,7 +22,7 @@
         <tbody>
         {% for b in buckets %}
         <tr>
-            <td>{{ b.descriptor or b.bucket_type }}</td>
+            <td><a href="{{ url_for('bucket_leads', bucket_type=b.bucket_type) }}">{{ b.descriptor or b.bucket_type }}</a></td>
             <td class="muted">{{ b.bucket_type }}</td>
             <td class="num">{{ b.triggered }}</td>
             <td class="num">{{ b.sent }}</td>

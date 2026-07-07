@@ -417,6 +417,15 @@ def lead_buckets():
                            buckets=leads_view.bucket_report(), on_buckets=True)
 
 
+@app.route("/leads/buckets/<bucket_type>")
+@require_login
+def bucket_leads(bucket_type):
+    return render_template("bucket_leads.html",
+                           bucket_type=bucket_type,
+                           descriptor=pdb.subsource_map().get(bucket_type, ""),
+                           rows=leads_view.bucket_leads(bucket_type), on_buckets=True)
+
+
 @app.route("/trigger-leads")
 @require_login
 def trigger_leads():
