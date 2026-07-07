@@ -116,3 +116,62 @@ def lead_stats():
         "finance": [{"label": l, "value": v, "n": n} for l, v, n in finance],
         "tiers": tiers, "by_make": makes, "by_year": years,
     }
+
+
+# ---- All Equifax trigger consumers vs the subset delivered to dealers ----
+# The bureau population and its credit/estimated-finance profile live in the
+# Equifax trigger view; "delivered" = the result_id appears in the dbo.sent ledger.
+_CONSUMER_VIEW = "[10.1.4.8].[CreditPipeline].[dbo].[vw_EquifaxConsumerRecordTriggers]"
+_CONSUMER_METRICS = [   # (label, float-expr on `t`, kind)
+    ("Avg credit score", "COALESCE(TRY_CAST(t.fico_auto_8 AS float), TRY_CAST(t.fico_8 AS float))", "int"),
+    ("Avg estimated APR", "TRY_CAST(t.EstimatedInterestRate AS float)", "pct"),
+    ("Avg estimated payment", "TRY_CAST(t.EstimatedPayment AS float)", "money"),
+    ("Avg estimated amount financed", "TRY_CAST(t.EstimatedAmountFinanced AS float)", "money"),
+    ("Avg estimated loan term", "TRY_CAST(t.EstimatedTermInMonths AS float)", "months"),
+    ("Avg estimated balance", "TRY_CAST(t.EstCurrentBalance AS float)", "money"),
+]
+
+
+def _consumer_fmt(kind, v):
+    if v is None:
+        return "—"
+    if kind == "pct":
+        return "%.2f%%" % v
+    if kind == "months":
+        return "%d mo" % round(v)
+    if kind == "money":
+        return "$%s" % format(int(round(v)), ",")
+    return "%d" % round(v)   # int (credit score)
+
+
+def consumer_stats():
+    """Credit + estimated-finance averages for the whole Equifax trigger pool
+    ("all") and the subset delivered to a dealer ("delivered"), in one pass.
+    Each average counts only rows carrying a positive value (shown as n)."""
+    sel = ["COUNT(*) AS n_all",
+           "SUM(CASE WHEN dl.result_id IS NOT NULL THEN 1 ELSE 0 END) AS n_deliv"]
+    for i, (_, expr, _kind) in enumerate(_CONSUMER_METRICS):
+        sel += [
+            "AVG(CASE WHEN %s>0 THEN %s END) AS a_all_%d" % (expr, expr, i),
+            "SUM(CASE WHEN %s>0 THEN 1 ELSE 0 END) AS na_all_%d" % (expr, i),
+            "AVG(CASE WHEN dl.result_id IS NOT NULL AND %s>0 THEN %s END) AS a_dl_%d" % (expr, expr, i),
+            "SUM(CASE WHEN dl.result_id IS NOT NULL AND %s>0 THEN 1 ELSE 0 END) AS na_dl_%d" % (expr, i),
+        ]
+    sql = ("SELECT " + ", ".join(sel) + " FROM " + _CONSUMER_VIEW + " t "
+           "LEFT JOIN (SELECT DISTINCT result_id FROM dlrPro.dbo.[sent]) dl "
+           "ON dl.result_id = t.result_id")
+    try:
+        r = dlr.query(sql, timeout=120)[0]
+    except Exception:
+        return {"n_all": 0, "n_delivered": 0, "all": [], "delivered": []}
+
+    def cards(pfx):
+        out = []
+        for i, (label, _expr, kind) in enumerate(_CONSUMER_METRICS):
+            out.append({"label": label,
+                        "value": _consumer_fmt(kind, r.get("a_%s_%d" % (pfx, i))),
+                        "n": r.get("na_%s_%d" % (pfx, i)) or 0})
+        return out
+
+    return {"n_all": r.get("n_all") or 0, "n_delivered": r.get("n_deliv") or 0,
+            "all": cards("all"), "delivered": cards("dl")}

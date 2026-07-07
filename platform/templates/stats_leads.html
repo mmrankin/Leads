@@ -11,13 +11,38 @@
   .hbar .track{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:6px;height:16px;overflow:hidden}
   .hbar .fill{height:100%;background:var(--accent)}
   .hbar .n{flex:0 0 40px;text-align:right;color:var(--muted)}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:4px 0 20px}
+  .seg a{padding:9px 20px;font-size:13px;color:var(--muted);text-decoration:none}
+  .seg a.on{background:var(--accent);color:#fff}
+  .seg a:not(.on):hover{background:var(--panel2);color:var(--txt)}
 </style>
 <h1>Statistics &mdash; Leads</h1>
 <p class="subtitle">
-    Summarized credit, finance &amp; vehicle info from the <strong>{{ '{:,}'.format(l.total) }}</strong> credit leads.
-    Averages use only leads that carry a structured value (shown as <em>n</em>); Credit&nbsp;Pipeline bureau leads
-    keep their estimates in the ADF notes and aren't counted in these structured averages.
+    The Equifax trigger consumer profile &mdash; compare <strong>all triggered consumers</strong> with the
+    subset actually <strong>delivered to dealers</strong> (in the sent ledger). The detailed sections further
+    down summarize the <strong>{{ '{:,}'.format(l.total) }}</strong> stored credit leads.
 </p>
+
+<div class="seg">
+    <a class="{{ 'on' if scope == 'all' else '' }}" href="{{ url_for('stats_leads', scope='all') }}">All consumers ({{ '{:,}'.format(c.n_all) }})</a>
+    <a class="{{ 'on' if scope == 'delivered' else '' }}" href="{{ url_for('stats_leads', scope='delivered') }}">Delivered to dealers ({{ '{:,}'.format(c.n_delivered) }})</a>
+</div>
+
+<div class="card">
+    <h2>Equifax credit &amp; estimated finance
+        <span class="muted">&mdash; {{ 'all consumers' if scope == 'all' else 'delivered to dealers' }}</span></h2>
+    <div class="kpis">
+        {% for m in (c.all if scope == 'all' else c.delivered) %}
+        <div class="kpi"><div class="l">{{ m.label }}</div><div class="v">{{ m.value }}</div><div class="s">n = {{ m.n }}</div></div>
+        {% endfor %}
+    </div>
+    <p class="subtitle" style="margin-top:12px">Straight from the Equifax trigger view; each average counts only
+        consumers carrying a positive value for that field (n).</p>
+</div>
+
+<h2 style="margin:28px 0 4px">Stored credit-lead detail</h2>
+<p class="subtitle" style="margin-top:0">Structured finance/vehicle info from the {{ '{:,}'.format(l.total) }} stored
+    credit leads (mostly Credit&nbsp;Estimator web submissions; bureau leads keep their estimates in the ADF notes).</p>
 
 <div class="card">
     <h2>Finance</h2>

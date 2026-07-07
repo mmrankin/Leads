@@ -177,8 +177,12 @@ def stats_program():
 @app.route("/stats/leads")
 @require_login
 def stats_leads():
+    scope = request.args.get("scope", "all")
+    if scope not in ("all", "delivered"):
+        scope = "all"
     return render_template("stats_leads.html",
-                           l=stats_view.lead_stats(), on_stats_leads=True)
+                           l=stats_view.lead_stats(), c=stats_view.consumer_stats(),
+                           scope=scope, on_stats_leads=True)
 
 
 @app.route("/pipeline-flow", methods=["POST"])
