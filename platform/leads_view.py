@@ -17,16 +17,20 @@ LOG = logging.getLogger("leads_view")
 
 # ----- Credit Pipeline volume report (per-dealer counts from the dbo.sent ledger) -----
 
-_VOLUME_SQL = """SELECT d.dealer_id, d.dealer_name, dp.max_leads_per_month,
+# Include a dealer if they hold the Credit Pipeline product OR have received a
+# lead this month or last month (s.created >= first-of-last-month).
+_VOLUME_SQL = """SELECT d.dealer_id, d.dealer_name, MAX(dp.max_leads_per_month) AS max_leads_per_month,
   SUM(CASE WHEN s.created >= %(lm)s AND s.created < %(tm)s THEN 1 ELSE 0 END) AS last_month,
   SUM(CASE WHEN s.created >= %(tm)s THEN 1 ELSE 0 END) AS this_month,
   SUM(CASE WHEN s.created >= %(yst)s AND s.created < %(td)s THEN 1 ELSE 0 END) AS yesterday,
   SUM(CASE WHEN s.created >= %(td)s THEN 1 ELSE 0 END) AS today,
   CONVERT(varchar(19), MAX(s.created), 120) AS last_sent
 FROM dlrPro.dbo.dealers d
-JOIN dlrPro.dbo.dealer_products dp ON dp.dealer_id = d.dealer_id AND dp.product_code = 'CREDIT_PIPELINE'
+LEFT JOIN dlrPro.dbo.dealer_products dp ON dp.dealer_id = d.dealer_id AND dp.product_code = 'CREDIT_PIPELINE'
 LEFT JOIN dlrPro.dbo.[sent] s ON s.dealer_id = d.id
-GROUP BY d.dealer_id, d.dealer_name, dp.max_leads_per_month
+GROUP BY d.dealer_id, d.dealer_name
+HAVING MAX(CASE WHEN dp.product_code IS NOT NULL THEN 1 ELSE 0 END) = 1
+    OR SUM(CASE WHEN s.created >= %(lm)s THEN 1 ELSE 0 END) > 0
 ORDER BY d.dealer_name"""
 
 _DEFAULT_MAX_LEADS = 10
