@@ -53,6 +53,19 @@
                         <svg viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>
                         <span>Funnel</span></a>
                 </div>
+                <div class="nav-parent {{ 'open' if on_stats_program or on_stats_leads else '' }}">
+                    <svg class="ic" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+                    <span>Statistics</span>
+                    <svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+                </div>
+                <div class="nav-sub {{ 'open' if on_stats_program or on_stats_leads else '' }}">
+                    <a class="nav-item {{ 'active' if on_stats_program else '' }}" href="{{ url_for('stats_program') }}">
+                        <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+                        <span>Program</span></a>
+                    <a class="nav-item {{ 'active' if on_stats_leads else '' }}" href="{{ url_for('stats_leads') }}">
+                        <svg viewBox="0 0 24 24"><path d="M4 4h11l5 5v11H4zM14 4v5h5M8 14h6M8 17h6"/></svg>
+                        <span>Leads</span></a>
+                </div>
                 <div class="nav-parent {{ 'open' if on_products or on_crm or on_sources else '' }}">
                     <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
                     <span>Admin</span>
@@ -69,15 +82,6 @@
                         <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10"/></svg>
                         <span>Lead Sources</span></a>
                 </div>
-            </div>
-            <div class="nav-group">
-                <div class="nav-label">Statistics</div>
-                <a class="nav-item {{ 'active' if on_stats_program else '' }}" href="{{ url_for('stats_program') }}">
-                    <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
-                    <span>Program</span></a>
-                <a class="nav-item {{ 'active' if on_stats_leads else '' }}" href="{{ url_for('stats_leads') }}">
-                    <svg viewBox="0 0 24 24"><path d="M4 4h11l5 5v11H4zM14 4v5h5M8 14h6M8 17h6"/></svg>
-                    <span>Leads</span></a>
             </div>
             <div class="side-meta">
                 Dealer Lead Platform<br>Lead Form · Trade-In · Credit Estimator

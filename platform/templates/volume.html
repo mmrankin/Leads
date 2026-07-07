@@ -28,6 +28,7 @@
         <thead><tr>
             <th>Dealer</th>
             <th>Code</th>
+            <th title="Y when the dealer has the Credit Pipeline product set up (active grant)">CP</th>
             <th class="num">Last month</th>
             <th class="num">This month</th>
             <th class="num">Yesterday</th>
@@ -43,6 +44,7 @@
         <tr>
             <td>{{ r.dealer_name }}</td>
             <td class="muted">{{ r.dealer_id }}</td>
+            <td>{% if r.cp_setup %}<span style="color:#4fd1a5;font-weight:600">Y</span>{% else %}<span class="muted">—</span>{% endif %}</td>
             <td class="num">{{ r.last_month }}</td>
             <td class="num">{{ r.this_month }}</td>
             <td class="num">{{ r.yesterday }}</td>
