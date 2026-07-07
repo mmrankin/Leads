@@ -59,6 +59,22 @@
         </tr>
         {% endfor %}
         </tbody>
+        <tfoot>
+        <tr style="font-weight:700;border-top:2px solid var(--line)">
+            <td>Total</td>
+            <td></td>
+            <td></td>
+            <td class="num">{{ rows | sum(attribute='last_month') }}</td>
+            <td class="num">{{ rows | sum(attribute='this_month') }}</td>
+            <td class="num">{{ rows | sum(attribute='yesterday') }}</td>
+            <td class="num">{{ rows | sum(attribute='today') }}</td>
+            <td></td>
+            <td class="num">{{ rows | sum(attribute='tracking') }}</td>
+            <td class="num">{{ '%.1f' | format(rows | sum(attribute='requested_daily')) }}</td>
+            <td class="num">{{ rows | sum(attribute='max_leads_per_month') }}</td>
+            <td class="num">{{ rows | sum(attribute='needed') }}</td>
+        </tr>
+        </tfoot>
     </table>
     </div>
     {% else %}
