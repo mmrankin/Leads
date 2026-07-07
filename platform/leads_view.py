@@ -233,7 +233,7 @@ _TRIGGER_LEADS_SQL = """SELECT TOP {limit}
   m.result_id, m.run_group_id, m.run_id, m.subscription_id, m.bucket_id,
   m.candidate_id, m.customer_record_id, m.retailer_id,
   CAST(m.matched_payload AS NVARCHAR(MAX)) AS matched_payload,
-  CONVERT(varchar(19), m.returned_at, 120) AS returned_at,
+  CONVERT(varchar(19), m.returned_at AT TIME ZONE 'UTC' AT TIME ZONE 'Central Standard Time', 120) AS returned_at,
   m.stream_session_id, m.consumer_zip,
   s.id AS sent_id, CONVERT(varchar(19), s.created, 120) AS sent_at
 FROM [10.1.4.8].[CreditPipeline].[dbo].[match_result] m
