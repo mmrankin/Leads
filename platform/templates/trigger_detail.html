@@ -20,7 +20,7 @@
         {% for label, value in fields %}
         <tr>
             <th>{{ label }}</th>
-            <td>{% if value in (none, '', '—') %}<span class="muted">—</span>{% else %}{{ value }}{% endif %}</td>
+            <td>{% if value in (none, '', '—') %}<span class="muted">—</span>{% elif label == 'Address' %}<a href="https://www.google.com/maps/search/?api=1&amp;query={{ value | urlencode }}" target="_blank" rel="noopener">{{ value }}</a>{% else %}{{ value }}{% endif %}</td>
         </tr>
         {% endfor %}
         </tbody>
