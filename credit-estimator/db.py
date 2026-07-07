@@ -16,7 +16,7 @@ CONTACT_FIELDS = (
     "address", "city", "state", "zip",
     "vehicle_year", "vehicle_make", "vehicle_model", "tc_agreed", "tc_agreed_at",
     "email_verdict", "email_score", "source", "subsource", "adf_xml",
-    "email1_status", "email1_detail",
+    "email1_status", "email1_detail", "result_id",
 )
 
 # Columns added to credit_leads after the initial migration; init_db self-heals
@@ -25,6 +25,7 @@ _ADDED_COLUMNS = (
     ("subsource", "NVARCHAR(255)"),
     ("address", "NVARCHAR(255)"), ("city", "NVARCHAR(100)"),
     ("state", "NVARCHAR(2)"), ("zip", "NVARCHAR(10)"),
+    ("result_id", "INT"),   # Credit Pipeline: the trigger's match_result.result_id
 )
 
 # Fields written when the estimate is produced (after the deal page).

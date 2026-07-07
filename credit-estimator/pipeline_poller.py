@@ -155,6 +155,7 @@ def send_lead(row, require_phone=False):
         "vehicle_make": (row.get("vehicle_make") or "").strip() or None,
         "vehicle_model": (row.get("vehicle_model") or "").strip() or None,
         "comments": None,
+        "result_id": row.get("result_id"),   # link the lead back to its trigger
         "source": SOURCE, "subsource": subsource,
         "tc_agreed": 0, "tc_agreed_at": None,   # bureau trigger; no on-platform T&C (col is NOT NULL)
         "email_verdict": None, "email_score": None,

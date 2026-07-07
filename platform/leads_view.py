@@ -416,6 +416,21 @@ def _annotate_contact_flags(rows):
             r.get("result_id"), (False, False, ""))
 
 
+def _lead_ids_for_results(result_ids):
+    """{result_id: credit_leads.id} for trigger result_ids that became sent leads
+    (credit_leads.result_id, set by the poller). Lets a trigger's customer name
+    link to its lead detail. Empty for unsent triggers (no credit_leads row)."""
+    ids = ",".join(str(int(x)) for x in result_ids if x is not None)
+    if not ids:
+        return {}
+    try:
+        rows = dlr.query("SELECT result_id, MAX(id) AS lead_id FROM dlrPro.dbo.credit_leads "
+                         "WHERE result_id IN (%s) GROUP BY result_id" % ids)
+    except Exception:
+        return {}
+    return {r["result_id"]: r["lead_id"] for r in rows if r.get("result_id") is not None}
+
+
 def trigger_leads(matching_customer=False, matching_dealer=False,
                   matching_phone=False, sent_status="unsent", limit=200):
     """The `limit` newest rows (by result_id, descending) from the CreditPipeline
@@ -491,8 +506,10 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
         rows = [r for r in rows if r.get("has_phone")]
     # Credit Pipeline set up for the row's dealer? = an active CREDIT_PIPELINE grant.
     grants = pdb.active_grants_by_dealer()
+    lmap = _lead_ids_for_results([r.get("result_id") for r in rows])
     for r in rows:
         r["cp_setup"] = pdb.PRODUCT_CREDIT_PIPELINE in grants.get(r.get("dealer_code"), set())
+        r["lead_id"] = lmap.get(r.get("result_id"))   # credit_leads.id if sent (else None)
     return rows
 
 
@@ -768,6 +785,9 @@ def bucket_leads(bucket_type, limit=1000):
         r["CustomerName"] = cr or pl or None
         r["veh"] = " ".join(str(x) for x in (r.get("vehicle_year"), r.get("vehicle_make"),
                                              r.get("vehicle_model")) if x).strip() or None
+    lmap = _lead_ids_for_results([r.get("result_id") for r in rows])
+    for r in rows:
+        r["lead_id"] = lmap.get(r.get("result_id"))   # credit_leads.id if sent (else None)
     return rows
 
 
