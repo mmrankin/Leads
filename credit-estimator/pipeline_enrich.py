@@ -214,12 +214,21 @@ def _months_since(d):
 
 
 def _phone_str(v):
-    """primary_phone is stored as a float; render it as a 10+ digit string."""
-    n = _f(v)
-    if n <= 0:
+    """A clean 10-digit phone string from a tbl_ownership primary_phone that may be
+    a float (6194846463.0), an int, or an already-formatted string
+    ('619-484-6463' / '1-619-484-6463'). Returns '' when there aren't 10 usable
+    digits. (Floats: drop the .0 before reading digits so it doesn't add a spurious
+    trailing digit; strings: just strip non-digits.)"""
+    if v is None:
         return ""
-    digits = str(int(round(n)))
-    return digits if len(digits) >= 10 else ""
+    if isinstance(v, (int, float)):
+        if v <= 0:
+            return ""
+        v = int(round(v))
+    digits = "".join(ch for ch in str(v) if ch.isdigit())
+    if len(digits) == 11 and digits[0] == "1":   # strip US country code
+        digits = digits[1:]
+    return digits[:10] if len(digits) >= 10 else ""
 
 
 def used_car_rate():
@@ -301,17 +310,20 @@ def enrich_lead(lead, result_id=None, consumer_id=None):
         PREFERRED source. When there is no row, the notes fall back to the
         tbl_ownership finance estimate.
       • tbl_ownership (matched by last_name / address / zip): the vehicle
-        (year/make/model + VIN) and mileage only. The trigger view's own vehicle is
-        used when present (it's usually NULL there), otherwise tbl_ownership.
-      • phone + email come ONLY from the Equifax trigger view — the tbl_ownership
-        match and the Equifax consumer tables are NO LONGER appended for contact
-        (consumer_id is retained for compatibility but unused here).
+        (year/make/model + VIN) and mileage, plus phone/email as a contact source.
+        The trigger view's own vehicle is used when present (usually NULL), else
+        tbl_ownership.
+      • phone + email are pulled from EVERY source (trigger view, tbl_ownership,
+        and the Equifax consumer tables by consumer_id) so a lead sends whenever a
+        contact exists anywhere. (This matches the Trigger Leads PH/EM flags. An
+        earlier trigger-view-only policy silently no-contact-capped ~224 sendable
+        leads — reverted 2026-07-07.)
 
     Name/address stay as the caller resolved them (record → matched_payload JSON).
     Returns the tbl_ownership row (or None)."""
     trig = match_equifax_trigger(result_id)
     m = match_owner(lead.get("last_name"), lead.get("address"), lead.get("zip"),
-                    lead.get("first_name"))   # vehicle / mileage / finance fallback only (not contact)
+                    lead.get("first_name"))   # vehicle / mileage / finance + contact fallback
 
     # Vehicle: prefer the trigger view (usually NULL), else tbl_ownership.
     def _first(*vals):
@@ -334,21 +346,31 @@ def enrich_lead(lead, result_id=None, consumer_id=None):
     if model:
         lead["vehicle_model"] = model
 
-    # Contact policy: phone + email come ONLY from the Equifax trigger view
-    # (vw_EquifaxConsumerRecordTriggers). The tbl_ownership match and the Equifax
-    # consumer tables (equifax..Consumer*) are NO LONGER appended for contact, and
-    # any contact the caller resolved from the payload is overridden — a record with
-    # no trigger-view contact goes out with none (and won't pass the contact gate).
-    lead["email"] = _first_nonempty(
+    # Contact: pull email/phone from EVERY source (best first) so the poller can
+    # send a lead whose contact lives in the ownership DB or the Equifax consumer
+    # tables, not just the trigger view. Keep whatever the caller already resolved
+    # (payload / customer_record) if present.
+    contact = match_equifax_contact(consumer_id)   # appended email/phone (equifax..Consumer*)
+    email = _first_nonempty(
+        lead.get("email"),                             # payload / customer_record
         trig.get("Email") if trig else None,           # trigger view — consumer
         trig.get("AppendedEmail") if trig else None,   # trigger view — appended
-    ) or ""
-    lead["phone"] = _first_phone(
+        m.get("email") if m else None,                 # tbl_ownership
+        contact.get("email"),                          # equifax..ConsumerEmails
+    )
+    if email:
+        lead["email"] = email
+    phone = _first_phone(
+        lead.get("phone"),
         trig.get("CellPhone") if trig else None,
         trig.get("HomePhone") if trig else None,
         trig.get("WorkPhone") if trig else None,
         trig.get("AppendedPhone") if trig else None,
-    ) or ""
+        _phone_str(m.get("primary_phone")) if m else None,   # tbl_ownership (float or formatted)
+        contact.get("phone"),                                # equifax..ConsumerTelephones
+    )
+    if phone:
+        lead["phone"] = phone
 
     # Notes: vehicle (VIN + year/make/model) + mileage, the credit/finance block
     # (trigger view first, else the tbl_ownership estimate), then appended contact.
