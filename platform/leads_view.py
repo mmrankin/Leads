@@ -10,6 +10,7 @@ import logging
 from datetime import date, timedelta
 
 import dlrpro_db as dlr
+import platform_db as pdb
 
 LOG = logging.getLogger("leads_view")
 
@@ -228,7 +229,7 @@ FIELD_LABELS = {
 # and merged in trigger_leads(); "matching_customer" is then filtered in Python.
 _TRIGGER_LEADS_SQL = """SELECT TOP {limit}
   c.first_name AS cr_first, c.last_name AS cr_last, m.consumer_id,
-  r.retailer_name AS CPName, d.dealer_name AS ADFName,
+  r.retailer_name AS CPName, d.dealer_name AS ADFName, d.dealer_id AS dealer_code,
   m.result_id, m.run_group_id, m.run_id, m.subscription_id, m.bucket_id,
   m.candidate_id, m.customer_record_id, m.retailer_id,
   CAST(m.matched_payload AS NVARCHAR(MAX)) AS matched_payload,
@@ -482,6 +483,10 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
         # Equifax consumer tables), which runs on the already-sliced rows — so this
         # keeps the phone-having rows among the newest `limit`.
         rows = [r for r in rows if r.get("has_phone")]
+    # Credit Pipeline set up for the row's dealer? = an active CREDIT_PIPELINE grant.
+    grants = pdb.active_grants_by_dealer()
+    for r in rows:
+        r["cp_setup"] = pdb.PRODUCT_CREDIT_PIPELINE in grants.get(r.get("dealer_code"), set())
     return rows
 
 
