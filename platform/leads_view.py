@@ -893,10 +893,16 @@ def trigger_detail(result_id):
                 return s
         return ""
 
+    def fmt_phone(v):
+        d = "".join(ch for ch in str(v or "") if ch.isdigit())
+        if len(d) == 11 and d[0] == "1":
+            d = d[1:]
+        return "%s-%s-%s" % (d[0:3], d[3:6], d[6:10]) if len(d) == 10 else (str(v or "").strip())
+
     first = pick(tv.get("FirstName"), m.get("cr_first"), payload.get("first_name"))
     last = pick(tv.get("LastName"), m.get("cr_last"), payload.get("last_name"))
     name = (first + " " + last).strip() or None
-    phone = pick(tv.get("CellPhone"), tv.get("HomePhone"), tv.get("WorkPhone"), tv.get("AppendedPhone"))
+    phone = fmt_phone(pick(tv.get("CellPhone"), tv.get("HomePhone"), tv.get("WorkPhone"), tv.get("AppendedPhone")))
     email = pick(tv.get("Email"), tv.get("AppendedEmail"))
     addr = pick(tv.get("Address1"), payload.get("address_line_1"))
     city = pick(tv.get("City"), payload.get("city"))
