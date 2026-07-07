@@ -38,6 +38,7 @@
 
 <div class="card">
     <form method="get" action="{{ url_for('trigger_leads') }}" class="row" style="align-items:flex-end">
+        <input type="hidden" name="applied" value="1">
         <label class="check" style="flex-direction:row;align-items:center;gap:8px">
             <input type="checkbox" name="customer" value="1" {{ 'checked' if f_customer else '' }}>
             <span>Matching customer</span>
@@ -81,6 +82,7 @@
                 <form method="post" action="{{ url_for('trigger_send') }}" style="margin:0"
                       onsubmit="return confirm('Send this lead to the dealer now?')">
                     <input type="hidden" name="result_id" value="{{ r.result_id }}">
+                    <input type="hidden" name="applied" value="1">
                     <input type="hidden" name="customer" value="{{ '1' if f_customer else '' }}">
                     <input type="hidden" name="dealer" value="{{ '1' if f_dealer else '' }}">
                     <input type="hidden" name="phone" value="{{ '1' if f_phone else '' }}">

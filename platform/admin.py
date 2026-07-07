@@ -326,9 +326,13 @@ def trigger_funnel():
 @app.route("/trigger-leads")
 @require_login
 def trigger_leads():
+    # "applied" marks a real form submission; on a fresh visit (no applied) the
+    # phone filter defaults ON, but once the form is applied we respect an
+    # unchecked box (otherwise a default-on box could never be turned off).
+    applied = request.args.get("applied") == "1"
     f_customer = request.args.get("customer") == "1"
     f_dealer = request.args.get("dealer") == "1"
-    f_phone = request.args.get("phone") == "1"
+    f_phone = (request.args.get("phone") == "1") if applied else True
     f_sent = request.args.get("sent", "unsent")
     if f_sent not in ("unsent", "sent", "all"):
         f_sent = "unsent"
@@ -349,7 +353,7 @@ def trigger_send():
     """Send one Credit Pipeline lead for a match result_id (same process as the
     poller: build ADF -> email -> store in credit_leads -> record in `sent`)."""
     result_id = (request.form.get("result_id") or "").strip()
-    keep = {k: request.form.get(k) for k in ("customer", "dealer", "phone", "sent")
+    keep = {k: request.form.get(k) for k in ("applied", "customer", "dealer", "phone", "sent")
             if request.form.get(k)}
     if not _CP_SEND_OK:
         flash("Send is unavailable — the credit send modules failed to load.", "error")
