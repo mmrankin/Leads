@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Sub-sources</h1>
+<p class="subtitle">
+    A Credit&nbsp;Pipeline trigger's <strong>secondary source</strong> is its Equifax
+    <strong>bucketType</strong> (from <code>vw_EquifaxConsumerRecordTriggers</code>). Map each
+    bucketType to a human descriptor here &mdash; it labels the <strong>Buckets</strong> report and
+    the lead's sub-source. Unmapped bucketTypes fall back to the raw code.
+</p>
+
+<div class="card">
+    <h2>Add / pre-map a bucketType</h2>
+    <p class="subtitle">Use this to map a bucketType before it shows up in the feed.</p>
+    <form method="post" action="{{ url_for('save_subsource') }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input name="bucket_type" placeholder="bucketType (e.g. CONQUEST_PROP)" style="min-width:16rem" required>
+        <input name="descriptor" placeholder="Descriptor (e.g. Conquest Soft Pull)" style="min-width:16rem" required>
+        <button type="submit" class="btn">Save</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Bucket types <span class="muted">({{ rows|length }})</span></h2>
+    {% if rows %}
+    <div style="overflow-x:auto">
+    <table class="tbl">
+        <thead><tr>
+            <th>Bucket type</th>
+            <th class="num">Triggered</th>
+            <th class="num">Sent</th>
+            <th>Descriptor</th>
+            <th></th>
+        </tr></thead>
+        <tbody>
+        {% for r in rows %}
+        <tr>
+            <td>{{ r.bucket_type }}</td>
+            <td class="num">{{ r.triggered }}</td>
+            <td class="num">{{ r.sent }}</td>
+            <td>
+                <form method="post" action="{{ url_for('save_subsource') }}" style="display:flex;gap:8px;align-items:center">
+                    <input type="hidden" name="bucket_type" value="{{ r.bucket_type }}">
+                    <input name="descriptor" value="{{ r.descriptor }}" placeholder="(unmapped — shows the raw code)" style="min-width:16rem">
+                    <button type="submit" class="btn">Save</button>
+                </form>
+            </td>
+            <td style="text-align:right">
+                {% if r.descriptor %}
+                <form method="post" action="{{ url_for('remove_subsource') }}" onsubmit="return confirm('Remove this descriptor?')">
+                    <input type="hidden" name="bucket_type" value="{{ r.bucket_type }}">
+                    <button class="link-btn" type="submit">remove</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="subtitle">No bucket types seen yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

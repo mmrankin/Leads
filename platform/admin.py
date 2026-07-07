@@ -270,6 +270,45 @@ def remove_lead_source(source_id):
     return redirect(url_for("lead_sources"))
 
 
+@app.route("/subsources")
+@require_login
+def subsources():
+    # Every bucketType seen in the trigger feed (with counts + current descriptor),
+    # plus any mapped bucketType not currently in the feed.
+    rows = leads_view.bucket_report()
+    seen = {r["bucket_type"] for r in rows}
+    for bt, desc in sorted(pdb.subsource_map().items()):
+        if bt not in seen:
+            rows.append({"bucket_type": bt, "descriptor": desc, "triggered": 0, "sent": 0})
+    return render_template("subsources.html", rows=rows, on_subsources=True)
+
+
+@app.route("/subsource", methods=["POST"])
+@require_login
+def save_subsource():
+    bucket = (request.form.get("bucket_type") or "").strip()
+    descriptor = (request.form.get("descriptor") or "").strip()
+    if not bucket:
+        flash("Bucket type is required.", "error")
+    elif descriptor:
+        pdb.upsert_subsource(bucket, descriptor)
+        flash(f"Saved descriptor for {bucket}.", "ok")
+    else:
+        pdb.delete_subsource(bucket)   # cleared descriptor -> revert to the raw code
+        flash(f"Cleared descriptor for {bucket}.", "ok")
+    return redirect(url_for("subsources"))
+
+
+@app.route("/subsource/delete", methods=["POST"])
+@require_login
+def remove_subsource():
+    bucket = (request.form.get("bucket_type") or "").strip()
+    if bucket:
+        pdb.delete_subsource(bucket)
+        flash(f"Removed descriptor for {bucket}.", "ok")
+    return redirect(url_for("subsources"))
+
+
 @app.route("/product/source", methods=["POST"])
 @require_login
 def save_product_source():

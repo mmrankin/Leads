@@ -42,6 +42,7 @@ def init_db():
     _ensure_pipeline_tables()
     _ensure_crm_tables()
     _ensure_leadsource_tables()
+    _ensure_subsource_tables()
     # Self-healing: the `source` column was added after the initial migration.
     dlr.execute("IF COL_LENGTH('products', 'source') IS NULL "
                 "ALTER TABLE products ADD source NVARCHAR(200) NULL")
@@ -177,6 +178,52 @@ def lead_source_for(dealer):
     except Exception:
         pass
     return DEFAULT_LEAD_SOURCE
+
+
+# ----- Credit Pipeline sub-sources (bucketType -> descriptor) -----
+#
+# A trigger's secondary source is its `bucketType` in the Equifax trigger view;
+# this table maps each bucketType to an admin-editable human descriptor (the
+# Subsources admin page). Unmapped bucketTypes fall back to the raw code.
+
+def _ensure_subsource_tables():
+    dlr.execute(
+        "IF OBJECT_ID(N'dbo.pipeline_subsource','U') IS NULL "
+        "CREATE TABLE dbo.pipeline_subsource ("
+        " id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,"
+        " bucket_type NVARCHAR(100) NOT NULL,"
+        " descriptor NVARCHAR(200) NOT NULL,"
+        " created_at NVARCHAR(32) NULL,"
+        " CONSTRAINT UQ_pipeline_subsource UNIQUE (bucket_type))")
+    # Seed the first known bucketType.
+    dlr.execute(
+        "IF NOT EXISTS (SELECT 1 FROM pipeline_subsource WHERE bucket_type=%(b)s) "
+        f"INSERT INTO pipeline_subsource (bucket_type, descriptor, created_at) "
+        f"VALUES (%(b)s, %(d)s, {NOW})",
+        {"b": "CONQUEST_PROP", "d": "Conquest Soft Pull"})
+
+
+def list_subsources():
+    return dlr.query("SELECT * FROM pipeline_subsource ORDER BY bucket_type")
+
+
+def subsource_map():
+    """{bucket_type: descriptor} used to label trigger buckets / lead sub-sources."""
+    return {r["bucket_type"]: r["descriptor"]
+            for r in dlr.query("SELECT bucket_type, descriptor FROM pipeline_subsource")}
+
+
+def upsert_subsource(bucket_type, descriptor):
+    """Set the descriptor for a bucketType (insert or update by bucket_type)."""
+    dlr.execute(
+        "IF EXISTS (SELECT 1 FROM pipeline_subsource WHERE bucket_type=%(b)s) "
+        "UPDATE pipeline_subsource SET descriptor=%(d)s WHERE bucket_type=%(b)s "
+        "ELSE INSERT INTO pipeline_subsource (bucket_type, descriptor, created_at) "
+        f"VALUES (%(b)s, %(d)s, {NOW})", {"b": bucket_type, "d": descriptor})
+
+
+def delete_subsource(bucket_type):
+    dlr.execute("DELETE FROM pipeline_subsource WHERE bucket_type=%(b)s", {"b": bucket_type})
 
 
 # ----- dealers -----
