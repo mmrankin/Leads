@@ -151,15 +151,35 @@ def _sql_str(v):
     return "'" + str(v).replace("'", "''") + "'"
 
 
-def _push_matches(cur, table, srccol, valcol, rows, existing):
+def normalize_phone(v):
+    """A tbl_ownership phone -> a clean 10-digit string, or '' if it isn't a usable
+    phone. Strips formatting (dashes/parens/spaces), a trailing '.0' from float-typed
+    values, and a leading country '1'. Scientific-notation values (e.g. '7.7337e+009',
+    stored with lost precision) are rejected — the same values the address match
+    already excludes with NOT LIKE '%e%'."""
+    s = str(v or "").strip()
+    if "e" in s.lower():
+        return ""
+    if s.endswith(".0"):
+        s = s[:-2]
+    d = "".join(ch for ch in s if ch.isdigit())
+    if len(d) == 11 and d[0] == "1":
+        d = d[1:]
+    return d if len(d) == 10 else ""
+
+
+def _push_matches(cur, table, srccol, valcol, rows, existing, normalize=None):
     """Insert (result_id, value) rows into a remote match_* table via EXEC(...) AT,
     one value per result_id, skipping result_ids already present (in `existing`).
-    `rows` are dicts with keys 'rid' and 'val'. Returns the number inserted."""
+    `rows` are dicts with keys 'rid' and 'val'. `normalize`, if given, cleans each
+    value and drops rows it maps to ''. Returns the number inserted."""
     seen = set(existing)
     todo = []
     for r in rows:
         rid, val = r.get("rid"), r.get("val")
         v = str(val).strip() if val is not None else ""
+        if normalize:
+            v = normalize(v)
         if rid is None or not v or rid in seen:
             continue
         seen.add(rid)
@@ -235,7 +255,8 @@ def populate_match_tables():
         have_em = {r["rid"] for r in rows_of(
             "SELECT DISTINCT result_id rid FROM [%s].%s.dbo.match_email" % (LINKED_SERVER, DB))}
 
-        n_ph = _push_matches(cur, "match_phone", "source", "phone", phone_rows, have_ph)
+        n_ph = _push_matches(cur, "match_phone", "source", "phone", phone_rows, have_ph,
+                             normalize=normalize_phone)
         n_em = _push_matches(cur, "match_email", "source_id", "email", email_rows, have_em)
         return (n_ph, n_em)
     except Exception:
