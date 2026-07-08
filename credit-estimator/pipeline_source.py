@@ -12,10 +12,15 @@ Env:
 
 import os
 
+import pymssql
+
 import dlrpro_db as dlr
 
 LINKED_SERVER = os.environ.get("CREDITPIPELINE_LINKED_SERVER", "10.1.4.8")
 DB = os.environ.get("CREDITPIPELINE_DB", "CreditPipeline")
+
+# A matched lead is "rejected" (abandoned) once it's this old and still unsent.
+REJECT_AFTER_MINUTES = int(os.environ.get("CREDITPIPELINE_REJECT_MIN", "30"))
 
 # Matched dealer (retailer_code = dealer_id), not yet in dbo.sent. The customer
 # record is LEFT-joined: when the customer_record_id doesn't exist, the poller
@@ -118,15 +123,73 @@ def annotate_contact(rows):
     return rows
 
 
+def _exec_autocommit(sql, params=None):
+    """Run a statement in autocommit mode (no wrapping transaction). Needed for a
+    linked-server write via EXEC(...) AT: inside pymssql's default transaction such
+    a write promotes to a distributed transaction (MSDTC), which isn't available."""
+    conn = pymssql.connect(
+        server=os.environ.get("DLRPRO_DB_SERVER", "10.1.1.10"),
+        user=os.environ.get("DLRPRO_DB_USER", "sa"),
+        password=os.environ.get("DLRPRO_DB_PASSWORD", ""),
+        database=os.environ.get("DLRPRO_DB_NAME", "dlrPro"),
+        timeout=120, login_timeout=10, autocommit=True)
+    try:
+        cur = conn.cursor()
+        cur.execute(sql, params) if params is not None else cur.execute(sql)
+    finally:
+        conn.close()
+
+
+def reject_stale_unsent(minutes=REJECT_AFTER_MINUTES):
+    """Set match_result.rejected = 1 on every lead older than `minutes` (by
+    returned_at, which is UTC) that was never sent and isn't already rejected.
+    Returns the number newly rejected.
+
+    The write goes through EXEC(...) AT [linked server] in autocommit mode — a plain
+    4-part-name UPDATE needs MSDTC, which this instance can't begin. The stale set is
+    found first with an ordinary cross-server read (fast), then updated remotely by
+    result_id only (no cross-server join in the write)."""
+    find = ("SELECT m.result_id "
+            "FROM [{ls}].[{db}].[dbo].[match_result] m "
+            "LEFT JOIN dlrPro.dbo.[sent] s ON s.result_id = m.result_id "
+            "WHERE m.rejected = 0 AND s.id IS NULL "
+            "AND m.returned_at < DATEADD(minute, -{m}, GETUTCDATE())"
+            ).format(ls=LINKED_SERVER, db=DB, m=int(minutes))
+    try:
+        ids = [int(r["result_id"]) for r in dlr.query(find, timeout=120)
+               if r.get("result_id") is not None]
+    except Exception:
+        return 0
+    done = 0
+    for i in range(0, len(ids), 500):
+        idlist = ",".join(str(x) for x in ids[i:i + 500])
+        remote = ("UPDATE %s.dbo.match_result SET rejected = 1 "
+                  "WHERE result_id IN (%s)" % (DB, idlist))
+        try:
+            _exec_autocommit("EXEC (%s) AT [" + LINKED_SERVER + "]", (remote,))
+            done += len(ids[i:i + 500])
+        except Exception:
+            pass
+    return done
+
+
 def fetch_unsent(limit=1000):
     """Matched, not-yet-sent trigger-lead rows for dealers CURRENTLY on the
-    CREDIT_PIPELINE product, excluding records that already hit the no-contact
-    retry cap. Rows carry the waterfall phone/email (wf_phone / wf_email)."""
+    CREDIT_PIPELINE product, excluding records that already hit the no-contact retry
+    cap OR have been rejected (too old, see reject_stale_unsent). Rows carry the
+    waterfall phone/email (wf_phone / wf_email) and come back NEWEST first."""
     sql = _FETCH_SQL.format(limit=int(limit), ls=LINKED_SERVER, db=DB,
-                            skip_cond="AND (sk.attempts IS NULL OR sk.attempts < %d)"
-                            % MAX_NO_CONTACT_ATTEMPTS,
+                            skip_cond="AND (sk.attempts IS NULL OR sk.attempts < %d) "
+                                      "AND m.rejected = 0" % MAX_NO_CONTACT_ATTEMPTS,
                             grant_cond=_ACTIVE_GRANT_COND)
-    return annotate_contact(dlr.query(sql))
+    rows = dlr.query(sql)
+    # Newest-first so fresh leads send before they age past the reject window. The
+    # query itself streams result_id ASC (the only order the 5-table cross-linked-
+    # server join plans fast), so we flip in Python. The unsent+non-rejected pool is
+    # small (<= reject window old), so the BATCH cap never hides the newest rows.
+    rows.sort(key=lambda r: int(r["result_id"]) if r.get("result_id") is not None else -1,
+              reverse=True)
+    return annotate_contact(rows)
 
 
 def fetch_one(result_id):

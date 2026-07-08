@@ -202,6 +202,14 @@ def send_lead(row, require_phone=False):
 
 def run(dry_run=False):
     pdb.init_db()
+    # Abandon stale leads first — mark any unsent lead older than the reject window
+    # as rejected. Runs every cycle regardless of the flow switch (staleness is
+    # independent of whether we're actively sending); skipped only on a dry run.
+    if not dry_run:
+        rejected = pipeline_source.reject_stale_unsent()
+        if rejected:
+            LOG.info("Rejected %d stale (>%dm) unsent lead(s).",
+                     rejected, pipeline_source.REJECT_AFTER_MINUTES)
     if not pdb.get_pipeline_flow():
         LOG.info("Credit Pipeline flow is OFF — nothing to do.")
         return
