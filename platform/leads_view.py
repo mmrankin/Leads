@@ -888,6 +888,23 @@ _TRIGGER_VIEW_ONE_SQL = ("SELECT TOP 1 * FROM "
     "WHERE result_id = %(rid)s")
 
 
+def _match_contact_value(table, result_id):
+    """Top of the phone/email waterfall: the value recorded for a result_id in a
+    CreditPipeline match_* table (match_phone / match_email). Both tables keep the
+    value in an `email` column (schema quirk). Newest row wins; '' when there is no
+    record or on error, so the caller falls through to the trigger-view fields."""
+    if table not in ("match_phone", "match_email"):
+        return ""
+    try:
+        rows = dlr.query(
+            "SELECT TOP 1 email AS val FROM [10.1.4.8].[CreditPipeline].[dbo].[" + table + "] "
+            "WHERE result_id = %(rid)s AND email IS NOT NULL AND LTRIM(RTRIM(email)) <> '' "
+            "ORDER BY created DESC", {"rid": int(result_id)}, timeout=30)
+    except Exception:
+        return ""
+    return (str(rows[0]["val"]).strip() if rows and rows[0].get("val") else "")
+
+
 def trigger_detail(result_id):
     """Customer/trigger detail for a single CreditPipeline match `result_id`, built
     from the match_result feed + the Equifax trigger view. This is the target for a
@@ -931,8 +948,14 @@ def trigger_detail(result_id):
     first = pick(tv.get("FirstName"), m.get("cr_first"), payload.get("first_name"))
     last = pick(tv.get("LastName"), m.get("cr_last"), payload.get("last_name"))
     name = (first + " " + last).strip() or None
-    phone = fmt_phone(pick(tv.get("CellPhone"), tv.get("HomePhone"), tv.get("WorkPhone"), tv.get("AppendedPhone")))
-    email = pick(tv.get("Email"), tv.get("AppendedEmail"))
+    # Phone/email waterfall: the dealer-specific match_* table for this result_id
+    # wins, then the trigger view's own fields (cell > home > work > appended for
+    # phone; email > appended for email).
+    match_phone = _match_contact_value("match_phone", rid)
+    match_email = _match_contact_value("match_email", rid)
+    phone = fmt_phone(pick(match_phone, tv.get("CellPhone"), tv.get("HomePhone"),
+                           tv.get("WorkPhone"), tv.get("AppendedPhone")))
+    email = pick(match_email, tv.get("Email"), tv.get("AppendedEmail"))
     addr = pick(tv.get("Address1"), payload.get("address_line_1"))
     city = pick(tv.get("City"), payload.get("city"))
     state = pick(tv.get("State"), payload.get("state"))
