@@ -427,33 +427,60 @@ _OWN_FALLBACK_ONE_SQL = ("SELECT TOP 1 email, primary_phone, [year], make "
     "ORDER BY last_seen DESC")
 
 
+def _match_contact_sets(result_ids):
+    """(result_ids present in match_email, result_ids present in match_phone) with a
+    non-empty value — the top of the phone/email waterfall. Both match_* tables keep
+    the value in an `email` column. Two batched queries; empty sets on error."""
+    ids = ",".join(str(int(x)) for x in result_ids if x is not None)
+    if not ids:
+        return set(), set()
+
+    def _present(table):
+        try:
+            rows = dlr.query(
+                "SELECT DISTINCT result_id FROM %s.[%s] "
+                "WHERE result_id IN (%s) AND NULLIF(LTRIM(RTRIM(email)), '') IS NOT NULL"
+                % (_CP_LS, table, ids))
+            return {r["result_id"] for r in rows}
+        except Exception:
+            return set()
+
+    return _present("match_email"), _present("match_phone")
+
+
 # Per-result_id cache of (has_email, has_phone, veh). These derive from immutable
-# source data (the match record + Equifax + tbl_ownership), so once computed for a
-# result_id they never change — cache for the process lifetime. Only the first page
-# load pays the (heavy) tbl_ownership cost; later loads only resolve new rows.
+# source data (the match record + Equifax trigger view + tbl_ownership), so once
+# computed for a result_id they never change — cache for the process lifetime. Only
+# the first page load pays the (heavy) tbl_ownership vehicle lookup.
 _TRIG_CONTACT_CACHE = {}
 
 
 def _annotate_contact_flags(rows):
-    """Set r['has_phone']/r['has_email'] and r['veh'] (year + make) per row from:
-    (1) the trigger view, (2) equifax..Consumer* by consumer_id, (3) tbl_ownership
-    (which also provides the vehicle). Batched, and cached per result_id."""
+    """Set r['has_phone']/r['has_email'] and r['veh'] (year + make) per row.
+
+    Phone/email follow the same waterfall as the Trigger Leads detail page and the
+    poller — match_phone/match_email (by result_id) then the Equifax trigger view's
+    own phone/email fields. tbl_ownership is NO LONGER consulted for contact; it is
+    still used, and only, for the vehicle (the trigger rarely carries one). Batched
+    and cached per result_id."""
     if not rows:
         return
     todo = [r for r in rows if r.get("result_id") not in _TRIG_CONTACT_CACHE]
     if todo:
-        tmap = _trigger_contact_map([r.get("result_id") for r in todo])
-        em_cids, ph_cids = _equifax_contact_sets([r.get("consumer_id") for r in todo])
+        rids = [r.get("result_id") for r in todo]
+        tmap = _trigger_contact_map(rids)                    # trigger view (email, phone)
+        m_em, m_ph = _match_contact_sets(rids)               # match_email / match_phone
         omap = _ownership_batch([(r.get("_ln") or "", r.get("_fn") or "",
                                   r.get("_addr") or "", r.get("_zip") or "") for r in todo])
         for r in todo:
-            t_em, t_ph = tmap.get(r.get("result_id"), (False, False))
-            o_em, o_ph, yr, mk = omap.get(((r.get("_ln") or "").strip(), (r.get("_fn") or "").strip(),
-                                           (r.get("_addr") or "").strip(), (r.get("_zip") or "").strip()),
-                                          (False, False, "", ""))
-            _TRIG_CONTACT_CACHE[r.get("result_id")] = (
-                t_em or (r.get("consumer_id") in em_cids) or o_em,
-                t_ph or (r.get("consumer_id") in ph_cids) or o_ph,
+            rid = r.get("result_id")
+            t_em, t_ph = tmap.get(rid, (False, False))
+            _, _, yr, mk = omap.get(((r.get("_ln") or "").strip(), (r.get("_fn") or "").strip(),
+                                     (r.get("_addr") or "").strip(), (r.get("_zip") or "").strip()),
+                                    (False, False, "", ""))   # vehicle only
+            _TRIG_CONTACT_CACHE[rid] = (
+                (rid in m_em) or t_em,
+                (rid in m_ph) or t_ph,
                 " ".join(p for p in (yr, mk) if p),
             )
     for r in rows:
