@@ -52,14 +52,6 @@
     <form method="get" action="{{ url_for('trigger_leads') }}" class="row" style="align-items:flex-end">
         <input type="hidden" name="applied" value="1">
         <label class="check" style="flex-direction:row;align-items:center;gap:8px">
-            <input type="checkbox" name="customer" value="1" {{ 'checked' if f_customer else '' }}>
-            <span>Matching customer</span>
-        </label>
-        <label class="check" style="flex-direction:row;align-items:center;gap:8px">
-            <input type="checkbox" name="dealer" value="1" {{ 'checked' if f_dealer else '' }}>
-            <span>Matching ADF dealer</span>
-        </label>
-        <label class="check" style="flex-direction:row;align-items:center;gap:8px">
             <input type="checkbox" name="phone" value="1" {{ 'checked' if f_phone else '' }}>
             <span>Matching phone</span>
         </label>
