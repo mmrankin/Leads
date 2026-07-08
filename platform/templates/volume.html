@@ -11,6 +11,9 @@
     box-shadow: 1px 0 0 var(--line);   /* divider from the scrolling columns */
   }
   table.sticky-first tbody tr:hover td:first-child { background: var(--panel2); }
+  table.sortable th { cursor: pointer; user-select: none; }
+  table.sortable th .sort-arrow { margin-left: 4px; opacity: .35; font-size: 11px; }
+  table.sortable th[data-dir] .sort-arrow { opacity: 1; }
 </style>
 <h1>Lead Volume</h1>
 <p class="subtitle">
@@ -24,7 +27,7 @@
     <h2>By Dealer <span class="muted">({{ rows|length }})</span></h2>
     {% if rows %}
     <div style="overflow-x:auto">
-    <table class="tbl nowrap sticky-first">
+    <table class="tbl nowrap sticky-first sortable" id="vol-table">
         <thead><tr>
             <th>Dealer</th>
             <th>Code</th>
@@ -81,4 +84,68 @@
     <p class="subtitle">No Credit Pipeline dealers yet.</p>
     {% endif %}
 </div>
+
+<script>
+// Client-side column sort for the Volume table. Sorts the tbody only (the Total
+// row lives in tfoot and stays put). Numeric columns are auto-detected; blanks
+// and dashes always sort to the bottom.
+(function () {
+    var table = document.getElementById('vol-table');
+    if (!table || !table.tHead || !table.tBodies.length) return;
+    var headers = table.tHead.rows[0].cells;
+    var tbody = table.tBodies[0];
+
+    function text(row, i) { return row.cells[i] ? row.cells[i].textContent.trim() : ''; }
+    function toNum(v) {
+        var n = parseFloat(v.replace(/[$,%\s]/g, ''));
+        return isNaN(n) ? null : n;
+    }
+    function isNumericCol(i) {
+        var rows = tbody.rows, seen = false;
+        for (var r = 0; r < rows.length; r++) {
+            var t = text(rows[r], i);
+            if (t === '' || t === '—') continue;   // — dash
+            if (toNum(t) === null) return false;
+            seen = true;
+        }
+        return seen;
+    }
+    function sortBy(i, dir, numeric) {
+        var rows = Array.prototype.slice.call(tbody.rows);
+        rows.sort(function (a, b) {
+            var ta = text(a, i), tb = text(b, i);
+            if (numeric) {
+                var na = toNum(ta), nb = toNum(tb);
+                if (na === null && nb === null) return 0;
+                if (na === null) return 1;      // blanks last, either direction
+                if (nb === null) return -1;
+                return dir * (na - nb);
+            }
+            return dir * ta.toLowerCase().localeCompare(tb.toLowerCase());
+        });
+        rows.forEach(function (row) { tbody.appendChild(row); });
+    }
+
+    Array.prototype.forEach.call(headers, function (th, i) {
+        var arrow = document.createElement('span');
+        arrow.className = 'sort-arrow';
+        arrow.textContent = '↕';   // ↕
+        th.appendChild(arrow);
+        th.addEventListener('click', function () {
+            var numeric = isNumericCol(i);
+            var cur = th.getAttribute('data-dir');
+            // First click: numeric -> descending (biggest first), text -> ascending.
+            var dir = cur === 'asc' ? -1 : cur === 'desc' ? 1 : (numeric ? -1 : 1);
+            sortBy(i, dir, numeric);
+            Array.prototype.forEach.call(headers, function (h) {
+                h.removeAttribute('data-dir');
+                var a = h.querySelector('.sort-arrow');
+                if (a) a.textContent = '↕';
+            });
+            th.setAttribute('data-dir', dir === 1 ? 'asc' : 'desc');
+            arrow.textContent = dir === 1 ? '↑' : '↓';   // ↑ / ↓
+        });
+    });
+})();
+</script>
 {% endblock %}
