@@ -91,8 +91,14 @@ def _s(val):
 def resolve_contact(row):
     """Name/address for a match row. Prefers the matched customer_record; when the
     customer_record_id doesn't exist (LEFT-join miss), falls back to the name and
-    address carried in the matched_payload JSON. Email/phone come only from the
-    customer_record (the payload carries none)."""
+    address carried in the matched_payload JSON.
+
+    Phone/email follow the same waterfall as the Trigger Leads detail page
+    (pipeline_source.annotate_contact sets wf_phone/wf_email on the row):
+      phone: match_phone -> CellPhone -> HomePhone -> WorkPhone -> AppendedPhone
+      email: match_email -> Email -> AppendedEmail
+    The customer_record's own email_address / *_phone stay as a last-resort
+    fallback (e.g. a row fetched by a path that didn't run the waterfall)."""
     payload = {}
     try:
         payload = json.loads(row.get("matched_payload") or "{}") or {}
@@ -105,8 +111,8 @@ def resolve_contact(row):
     return {
         "first_name": pick("first_name", "first_name"),
         "last_name": pick("last_name", "last_name"),
-        "email": _s(row.get("email_address")),
-        "phone": _phone(row),
+        "email": _s(row.get("wf_email")) or _s(row.get("email_address")),
+        "phone": _s(row.get("wf_phone")) or _phone(row),
         "address": pick("address", "address_line_1"),
         "city": pick("city", "city"),
         "state": pick("state", "state"),

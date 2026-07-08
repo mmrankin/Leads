@@ -51,22 +51,89 @@ _ACTIVE_GRANT_COND = (
     "AND (dp.valid_to   IS NULL OR dp.valid_to   >= CONVERT(date, GETDATE())))")
 
 
+# ----- Phone/email waterfall (same as the Trigger Leads detail page) -----
+# Phone: match_phone(result_id) -> CellPhone -> HomePhone -> WorkPhone -> AppendedPhone
+# Email: match_email(result_id) -> Email -> AppendedEmail
+# All keyed by result_id from the Equifax trigger view + the match_* tables (which
+# keep their value in an `email` column). Batched so a whole fetch costs 3 queries.
+
+
+def _s(v):
+    return str(v).strip() if v is not None else ""
+
+
+def _match_values(table, result_ids):
+    """{result_id: value} from a CreditPipeline match_* table (value in `email`),
+    newest row per result_id. '' entries dropped. Empty on error."""
+    ids = ",".join(str(int(x)) for x in result_ids if x is not None)
+    if not ids:
+        return {}
+    sql = ("SELECT result_id, email AS val, created "
+           "FROM [{ls}].[{db}].[dbo].[{t}] "
+           "WHERE result_id IN ({ids}) AND email IS NOT NULL AND LTRIM(RTRIM(email)) <> ''"
+           ).format(ls=LINKED_SERVER, db=DB, t=table, ids=ids)
+    best = {}
+    try:
+        for r in dlr.query(sql):
+            rid, v, cr = r.get("result_id"), _s(r.get("val")), r.get("created")
+            if not v:
+                continue
+            if rid not in best or (cr is not None and (best[rid][1] is None or cr > best[rid][1])):
+                best[rid] = (v, cr)
+    except Exception:
+        return {}
+    return {rid: v for rid, (v, cr) in best.items()}
+
+
+def _view_contacts(result_ids):
+    """{result_id: {phone/email cols}} from the Equifax trigger view. Empty on error."""
+    ids = ",".join(str(int(x)) for x in result_ids if x is not None)
+    if not ids:
+        return {}
+    sql = ("SELECT result_id, CellPhone, HomePhone, WorkPhone, AppendedPhone, "
+           "Email, AppendedEmail "
+           "FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecordTriggers] "
+           "WHERE result_id IN ({ids})").format(ls=LINKED_SERVER, db=DB, ids=ids)
+    try:
+        return {r["result_id"]: r for r in dlr.query(sql)}
+    except Exception:
+        return {}
+
+
+def annotate_contact(rows):
+    """Set row['wf_phone'] / row['wf_email'] on each row per the waterfall above,
+    keyed by result_id. Batched; best-effort (fields default to '')."""
+    if not rows:
+        return rows
+    ids = [r.get("result_id") for r in rows]
+    mp = _match_values("match_phone", ids)
+    me = _match_values("match_email", ids)
+    vc = _view_contacts(ids)
+    for r in rows:
+        rid = r.get("result_id")
+        v = vc.get(rid) or {}
+        r["wf_phone"] = (mp.get(rid) or _s(v.get("CellPhone")) or _s(v.get("HomePhone"))
+                         or _s(v.get("WorkPhone")) or _s(v.get("AppendedPhone")))
+        r["wf_email"] = (me.get(rid) or _s(v.get("Email")) or _s(v.get("AppendedEmail")))
+    return rows
+
+
 def fetch_unsent(limit=1000):
     """Matched, not-yet-sent trigger-lead rows for dealers CURRENTLY on the
     CREDIT_PIPELINE product, excluding records that already hit the no-contact
-    retry cap."""
+    retry cap. Rows carry the waterfall phone/email (wf_phone / wf_email)."""
     sql = _FETCH_SQL.format(limit=int(limit), ls=LINKED_SERVER, db=DB,
                             skip_cond="AND (sk.attempts IS NULL OR sk.attempts < %d)"
                             % MAX_NO_CONTACT_ATTEMPTS,
                             grant_cond=_ACTIVE_GRANT_COND)
-    return dlr.query(sql)
+    return annotate_contact(dlr.query(sql))
 
 
 def fetch_one(result_id):
     """One matched, not-yet-sent row for a specific result_id, or None. Ignores the
     retry cap AND the active-grant filter so an admin can always attempt a manual
-    send (the poller's automatic path still enforces both)."""
+    send (the poller's automatic path still enforces both). Carries wf_phone/wf_email."""
     sql = _FETCH_SQL.format(limit=1, ls=LINKED_SERVER, db=DB,
                             skip_cond="AND m.result_id = %(rid)s", grant_cond="")
-    rows = dlr.query(sql, {"rid": int(result_id)})
+    rows = annotate_contact(dlr.query(sql, {"rid": int(result_id)}))
     return rows[0] if rows else None
