@@ -73,10 +73,11 @@ def _match_values(table, result_ids):
     ids = ",".join(str(int(x)) for x in result_ids if x is not None)
     if not ids:
         return {}
-    sql = ("SELECT result_id, email AS val, created "
+    col = "phone" if table == "match_phone" else "email"   # value column differs per table
+    sql = ("SELECT result_id, {c} AS val, created "
            "FROM [{ls}].[{db}].[dbo].[{t}] "
-           "WHERE result_id IN ({ids}) AND email IS NOT NULL AND LTRIM(RTRIM(email)) <> ''"
-           ).format(ls=LINKED_SERVER, db=DB, t=table, ids=ids)
+           "WHERE result_id IN ({ids}) AND {c} IS NOT NULL AND LTRIM(RTRIM({c})) <> ''"
+           ).format(c=col, ls=LINKED_SERVER, db=DB, t=table, ids=ids)
     best = {}
     try:
         for r in dlr.query(sql):
@@ -123,19 +124,122 @@ def annotate_contact(rows):
     return rows
 
 
-def _exec_autocommit(sql, params=None):
-    """Run a statement in autocommit mode (no wrapping transaction). Needed for a
-    linked-server write via EXEC(...) AT: inside pymssql's default transaction such
-    a write promotes to a distributed transaction (MSDTC), which isn't available."""
-    conn = pymssql.connect(
+def _autocommit_conn(timeout=280):
+    """A pymssql connection in autocommit mode (no wrapping transaction) — required
+    for linked-server writes via EXEC(...) AT, which inside pymssql's default
+    transaction promote to a distributed transaction (MSDTC) that isn't available."""
+    return pymssql.connect(
         server=os.environ.get("DLRPRO_DB_SERVER", "10.1.1.10"),
         user=os.environ.get("DLRPRO_DB_USER", "sa"),
         password=os.environ.get("DLRPRO_DB_PASSWORD", ""),
         database=os.environ.get("DLRPRO_DB_NAME", "dlrPro"),
-        timeout=120, login_timeout=10, autocommit=True)
+        timeout=timeout, login_timeout=10, autocommit=True)
+
+
+def _exec_autocommit(sql, params=None):
+    """Run one statement in autocommit mode. See _autocommit_conn."""
+    conn = _autocommit_conn(timeout=120)
     try:
         cur = conn.cursor()
         cur.execute(sql, params) if params is not None else cur.execute(sql)
+    finally:
+        conn.close()
+
+
+def _sql_str(v):
+    """A SQL string literal for embedding a value inside an EXEC('...') AT batch."""
+    return "'" + str(v).replace("'", "''") + "'"
+
+
+def _push_matches(cur, table, srccol, valcol, rows, existing):
+    """Insert (result_id, value) rows into a remote match_* table via EXEC(...) AT,
+    one value per result_id, skipping result_ids already present (in `existing`).
+    `rows` are dicts with keys 'rid' and 'val'. Returns the number inserted."""
+    seen = set(existing)
+    todo = []
+    for r in rows:
+        rid, val = r.get("rid"), r.get("val")
+        v = str(val).strip() if val is not None else ""
+        if rid is None or not v or rid in seen:
+            continue
+        seen.add(rid)
+        todo.append((int(rid), v))
+    n = 0
+    for i in range(0, len(todo), 200):
+        chunk = todo[i:i + 200]
+        vals = ",".join("(%d,1,%s,getdate())" % (rid, _sql_str(v)) for rid, v in chunk)
+        remote = ("INSERT INTO %s.dbo.%s (result_id,%s,%s,created) VALUES %s"
+                  % (DB, table, srccol, valcol, vals))
+        try:
+            cur.execute("EXEC (%s) AT [" + LINKED_SERVER + "]", (remote,))
+            n += len(chunk)
+        except Exception:
+            pass
+    return n
+
+
+def populate_match_tables():
+    """Enrich contact by matching Equifax trigger-view rows that carry no
+    AppendedPhone to panafax tbl_ownership, writing any phone/email found into
+    match_phone / match_email (which the lead waterfall then prefers). Mirrors the
+    operator matching query:
+
+      * phone from tbl_ownership.primary_phone, matched by appended-email, or by
+        last name + address1 + zip;
+      * email from tbl_ownership.email, matched by last name + address1(8) + zip.
+
+    Idempotent: a result_id already present in a target table is skipped, so
+    re-running never duplicates. Returns (phones_inserted, emails_inserted). Writes
+    go through EXEC(...) AT in autocommit (a cross-server INSERT needs MSDTC)."""
+    view = "[%s].%s.dbo.vw_EquifaxConsumerRecordTriggers" % (LINKED_SERVER, DB)
+    own = "panafax.dbo.tbl_ownership"
+    try:
+        conn = _autocommit_conn()
+    except Exception:
+        return (0, 0)
+    cur = conn.cursor(as_dict=True)
+
+    def rows_of(sql):
+        cur.execute(sql)
+        return cur.fetchall()
+
+    try:
+        # Pull the un-appended-phone trigger rows into local temp tables (one remote
+        # read each), then join locally against the 340M-row ownership table.
+        cur.execute("IF OBJECT_ID('tempdb..#mpEmail') IS NOT NULL DROP TABLE #mpEmail")
+        cur.execute("SELECT result_id, AppendedEmail INTO #mpEmail FROM %s WITH (NOLOCK) "
+                    "WHERE AppendedPhone IS NULL AND AppendedEmail IS NOT NULL" % view)
+        cur.execute("IF OBJECT_ID('tempdb..#mpAddr') IS NOT NULL DROP TABLE #mpAddr")
+        cur.execute("SELECT DISTINCT result_id, LastName, Address1, ZipCode INTO #mpAddr "
+                    "FROM %s WITH (NOLOCK) WHERE AppendedPhone IS NULL" % view)
+
+        phone_rows = rows_of(
+            "SELECT DISTINCT e.result_id rid, o.primary_phone val "
+            "FROM %s o WITH (NOLOCK) JOIN #mpEmail e ON e.AppendedEmail = o.email "
+            "WHERE o.primary_phone IS NOT NULL" % own)
+        phone_rows += rows_of(
+            "SELECT DISTINCT a.result_id rid, o.primary_phone val "
+            "FROM %s o WITH (NOLOCK) JOIN #mpAddr a "
+            "ON a.Address1 = o.address1 AND a.ZipCode = o.zip AND a.LastName = o.last_name "
+            "WHERE o.primary_phone IS NOT NULL AND o.primary_phone NOT LIKE '%%e%%' "
+            "AND o.primary_phone <> ''" % own)
+        email_rows = rows_of(
+            "SELECT DISTINCT a.result_id rid, o.email val "
+            "FROM %s o WITH (NOLOCK) JOIN #mpAddr a "
+            "ON LEFT(a.Address1, 8) = LEFT(o.address1, 8) AND a.ZipCode = o.zip "
+            "AND a.LastName = o.last_name "
+            "WHERE o.email IS NOT NULL AND o.email <> ''" % own)
+
+        have_ph = {r["rid"] for r in rows_of(
+            "SELECT DISTINCT result_id rid FROM [%s].%s.dbo.match_phone" % (LINKED_SERVER, DB))}
+        have_em = {r["rid"] for r in rows_of(
+            "SELECT DISTINCT result_id rid FROM [%s].%s.dbo.match_email" % (LINKED_SERVER, DB))}
+
+        n_ph = _push_matches(cur, "match_phone", "source", "phone", phone_rows, have_ph)
+        n_em = _push_matches(cur, "match_email", "source_id", "email", email_rows, have_em)
+        return (n_ph, n_em)
+    except Exception:
+        return (0, 0)
     finally:
         conn.close()
 

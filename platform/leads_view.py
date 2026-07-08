@@ -436,11 +436,12 @@ def _match_contact_sets(result_ids):
         return set(), set()
 
     def _present(table):
+        col = "phone" if table == "match_phone" else "email"   # value column differs per table
         try:
             rows = dlr.query(
                 "SELECT DISTINCT result_id FROM %s.[%s] "
-                "WHERE result_id IN (%s) AND NULLIF(LTRIM(RTRIM(email)), '') IS NOT NULL"
-                % (_CP_LS, table, ids))
+                "WHERE result_id IN (%s) AND NULLIF(LTRIM(RTRIM(%s)), '') IS NOT NULL"
+                % (_CP_LS, table, ids, col))
             return {r["result_id"] for r in rows}
         except Exception:
             return set()
@@ -515,9 +516,10 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
     result_id ASC (it streams the remote clustered index); ORDER BY result_id DESC
     collapses the plan into a 180s+ timeout. So we fetch ascending up to a
     generous cap, then sort newest-first and slice to `limit` in Python."""
-    # Never show rows with a blank consumer_id on match_result.
+    # Never show rows with a blank consumer_id on match_result, nor rejected
+    # (abandoned) leads — rejected = 1 once a lead ages past the send window unsent.
     # (matching_customer is applied in Python below — its Equifax view isn't joined.)
-    conds = ["m.consumer_id IS NOT NULL"]
+    conds = ["m.consumer_id IS NOT NULL", "m.rejected = 0"]
     if matching_dealer:
         conds.append("d.dealer_name IS NOT NULL")
     if sent_status == "unsent":
@@ -922,11 +924,12 @@ def _match_contact_value(table, result_id):
     record or on error, so the caller falls through to the trigger-view fields."""
     if table not in ("match_phone", "match_email"):
         return ""
+    col = "phone" if table == "match_phone" else "email"   # value column differs per table
     try:
         rows = dlr.query(
-            "SELECT TOP 1 email AS val FROM [10.1.4.8].[CreditPipeline].[dbo].[" + table + "] "
-            "WHERE result_id = %(rid)s AND email IS NOT NULL AND LTRIM(RTRIM(email)) <> '' "
-            "ORDER BY created DESC", {"rid": int(result_id)}, timeout=30)
+            "SELECT TOP 1 %s AS val FROM [10.1.4.8].[CreditPipeline].[dbo].[%s] "
+            "WHERE result_id = %%(rid)s AND %s IS NOT NULL AND LTRIM(RTRIM(%s)) <> '' "
+            "ORDER BY created DESC" % (col, table, col, col), {"rid": int(result_id)}, timeout=30)
     except Exception:
         return ""
     return (str(rows[0]["val"]).strip() if rows and rows[0].get("val") else "")
