@@ -65,11 +65,11 @@ def match_equifax_trigger(result_id):
 # Appended email / phone from the Equifax consumer tables — best available
 # (prefer the lowest instance, but fall back to any so we don't miss a consumer
 # who only has contact at instance > 1).
-_EQUIFAX_EMAIL_SQL = """SELECT TOP 1 emailAddress
+_EQUIFAX_EMAIL_SQL = """SELECT emailAddress
   FROM [{ls}].[{db}].[dbo].[ConsumerEmails]
   WHERE consumer_id = %(cid)s AND NULLIF(LTRIM(RTRIM(emailAddress)),'') IS NOT NULL
   ORDER BY instance"""
-_EQUIFAX_PHONE_SQL = """SELECT TOP 1 telephoneNumber
+_EQUIFAX_PHONE_SQL = """SELECT telephoneNumber
   FROM [{ls}].[{db}].[dbo].[ConsumerTelephones]
   WHERE consumer_id = %(cid)s AND NULLIF(LTRIM(RTRIM(telephoneNumber)),'') IS NOT NULL
   ORDER BY telephoneTypeInstance, TelephoneType_ID DESC"""
@@ -100,26 +100,54 @@ def _first_nonempty(*vals):
     return None
 
 
+def _norm_phone(v):
+    """A raw phone value normalized to a 10-digit string (drops a leading US
+    country code), or None."""
+    d = _digits(v)
+    if not d:
+        return None
+    if len(d) == 11 and d[0] == "1":
+        d = d[1:]
+    return d[:10] if len(d) >= 10 else None
+
+
 def _first_phone(*vals):
-    """First candidate with >=10 digits, normalized to a 10-digit string (drops a
-    leading US country code), or None."""
+    """First candidate normalized to a 10-digit string, or None."""
     for v in vals:
-        d = _digits(v)
-        if not d:
-            continue
-        if len(d) == 11 and d[0] == "1":
-            d = d[1:]
-        if len(d) >= 10:
-            return d[:10]
+        d = _norm_phone(v)
+        if d:
+            return d
     return None
 
 
-def match_equifax_contact(consumer_id):
-    """Appended email + phone for this Consumer_ID from the Equifax consumer
-    tables (equifax..ConsumerEmails / ConsumerTelephones). Returns
-    {"email": str|None, "phone": <digits>|None}; empty when there's no
-    consumer_id or a lookup errors."""
-    out = {"email": None, "phone": None}
+def _dedupe_emails(vals):
+    """Ordered, de-duplicated (case-insensitive) list of non-empty emails."""
+    out, seen = [], set()
+    for v in vals:
+        e = (str(v).strip() if v is not None else "")
+        if e and e.lower() not in seen:
+            seen.add(e.lower())
+            out.append(e)
+    return out
+
+
+def _dedupe_phones(vals):
+    """Ordered, de-duplicated list of 10-digit phone strings."""
+    out, seen = [], set()
+    for v in vals:
+        d = _norm_phone(v)
+        if d and d not in seen:
+            seen.add(d)
+            out.append(d)
+    return out
+
+
+def match_equifax_contacts(consumer_id):
+    """ALL appended emails/phones for this Consumer_ID from the Equifax consumer
+    tables (equifax..ConsumerEmails / ConsumerTelephones), ordered by instance.
+    {"emails": [str, …], "phones": [<raw>, …]}; empty when there's no consumer_id
+    or a lookup errors."""
+    out = {"emails": [], "phones": []}
     if consumer_id in (None, ""):
         return out
     try:
@@ -127,15 +155,13 @@ def match_equifax_contact(consumer_id):
     except (TypeError, ValueError):
         return out
     try:
-        rows = dlr.query(_EQUIFAX_EMAIL_SQL.format(ls=LINKED_SERVER, db=EQUIFAX_DB), {"cid": cid})
-        if rows:
-            out["email"] = (rows[0].get("emailAddress") or "").strip() or None
+        out["emails"] = [(r.get("emailAddress") or "").strip() for r in
+                         dlr.query(_EQUIFAX_EMAIL_SQL.format(ls=LINKED_SERVER, db=EQUIFAX_DB), {"cid": cid})]
     except Exception as e:
         LOG.warning("equifax email lookup failed (consumer_id=%s): %s", consumer_id, e)
     try:
-        rows = dlr.query(_EQUIFAX_PHONE_SQL.format(ls=LINKED_SERVER, db=EQUIFAX_DB), {"cid": cid})
-        if rows:
-            out["phone"] = _digits(rows[0].get("telephoneNumber"))
+        out["phones"] = [r.get("telephoneNumber") for r in
+                         dlr.query(_EQUIFAX_PHONE_SQL.format(ls=LINKED_SERVER, db=EQUIFAX_DB), {"cid": cid})]
     except Exception as e:
         LOG.warning("equifax phone lookup failed (consumer_id=%s): %s", consumer_id, e)
     return out
@@ -346,31 +372,31 @@ def enrich_lead(lead, result_id=None, consumer_id=None):
     if model:
         lead["vehicle_model"] = model
 
-    # Contact: pull email/phone from EVERY source (best first) so the poller can
-    # send a lead whose contact lives in the ownership DB or the Equifax consumer
-    # tables, not just the trigger view. Keep whatever the caller already resolved
-    # (payload / customer_record) if present.
-    contact = match_equifax_contact(consumer_id)   # appended email/phone (equifax..Consumer*)
-    email = _first_nonempty(
+    # Contact: gather ALL emails/phones from every source (best first), de-duped —
+    # the trigger view (consumer + appended), tbl_ownership, and the Equifax
+    # consumer tables (every instance). The first is the lead's primary contact;
+    # the rest are listed in the notes as "Additional Email/Phone".
+    ce = match_equifax_contacts(consumer_id)   # {"emails":[…], "phones":[…]} (equifax..Consumer*)
+    emails = _dedupe_emails([
         lead.get("email"),                             # payload / customer_record
         trig.get("Email") if trig else None,           # trigger view — consumer
         trig.get("AppendedEmail") if trig else None,   # trigger view — appended
         m.get("email") if m else None,                 # tbl_ownership
-        contact.get("email"),                          # equifax..ConsumerEmails
-    )
-    if email:
-        lead["email"] = email
-    phone = _first_phone(
+        *ce["emails"],                                 # equifax..ConsumerEmails (all instances)
+    ])
+    phones = _dedupe_phones([
         lead.get("phone"),
         trig.get("CellPhone") if trig else None,
         trig.get("HomePhone") if trig else None,
         trig.get("WorkPhone") if trig else None,
         trig.get("AppendedPhone") if trig else None,
         _phone_str(m.get("primary_phone")) if m else None,   # tbl_ownership (float or formatted)
-        contact.get("phone"),                                # equifax..ConsumerTelephones
-    )
-    if phone:
-        lead["phone"] = phone
+        *ce["phones"],                                       # equifax..ConsumerTelephones (all)
+    ])
+    if emails:
+        lead["email"] = emails[0]
+    if phones:
+        lead["phone"] = phones[0]
 
     # Notes: vehicle (VIN + year/make/model) + mileage, the credit/finance block
     # (trigger view first, else the tbl_ownership estimate), then appended contact.
@@ -402,10 +428,15 @@ def enrich_lead(lead, result_id=None, consumer_id=None):
             if pay > 0:
                 lines.append(f"Estimated Payment: ${pay:,}")
 
-    if lead.get("email"):
-        lines.append(f"Email Address Appended: {lead['email']}")
-    if lead.get("phone"):
-        lines.append(f"Phone Number Appended: {_fmt_phone(lead['phone'])}")
+    if emails:
+        lines.append(f"Email Address Appended: {emails[0]}")
+    if phones:
+        lines.append(f"Phone Number Appended: {_fmt_phone(phones[0])}")
+    # All additional phone numbers / email addresses, below the primary contact.
+    for e in emails[1:]:
+        lines.append(f"Additional Email: {e}")
+    for p in phones[1:]:
+        lines.append(f"Additional Phone: {_fmt_phone(p)}")
 
     if lines:
         block = "\n".join(lines)
