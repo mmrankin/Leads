@@ -107,6 +107,30 @@
         </div>
         <button type="submit" class="btn">Save Grant</button>
     </form>
+    <script>
+    (function () {
+        // Pre-fill the grant form with the dealer's current values when an
+        // already-granted product is selected, so saving doesn't blank a field.
+        var GRANTS = {{ grant_form_data|tojson }};
+        var form = document.querySelector('form[action="{{ url_for('save_grant') }}"]');
+        if (!form) return;
+        var sel = form.querySelector('select[name="product_code"]');
+        var fields = ['valid_from', 'valid_to', 'monthly_price', 'per_lead_price', 'max_leads_per_month'];
+        var btn = form.querySelector('button[type="submit"]');
+        function fill() {
+            var g = GRANTS[sel.value];
+            fields.forEach(function (f) {
+                var inp = form.querySelector('[name="' + f + '"]');
+                if (!inp) return;
+                if (g) { inp.value = g[f]; }
+                else { inp.value = (f === 'max_leads_per_month') ? '10' : ''; }
+            });
+            if (btn) btn.textContent = g ? 'Update Grant' : 'Save Grant';
+        }
+        sel.addEventListener('change', fill);
+        fill();  // run for the initially-selected product on load
+    })();
+    </script>
 </div>
 
 <div class="card">

@@ -350,6 +350,19 @@ def dealer(dealer_id):
     grants = pdb.list_grants(dealer_id)
     for g in grants:
         g["url"] = product_url(g["product_code"], dealer_id)
+    # Existing grant values keyed by product_code, so the "Add / Update Grant"
+    # form can pre-fill when an already-granted product is selected (avoids
+    # overwriting a field with a blank on save). Dates -> 'YYYY-MM-DD'.
+    grant_form_data = {
+        g["product_code"]: {
+            "valid_from": str(g["valid_from"])[:10] if g.get("valid_from") else "",
+            "valid_to": str(g["valid_to"])[:10] if g.get("valid_to") else "",
+            "monthly_price": "" if g.get("monthly_price") is None else str(g["monthly_price"]),
+            "per_lead_price": "" if g.get("per_lead_price") is None else str(g["per_lead_price"]),
+            "max_leads_per_month": "" if g.get("max_leads_per_month") is None else str(g["max_leads_per_month"]),
+        }
+        for g in grants
+    }
     # "Send a test lead" link — for dealers with the credit app (either grant).
     credit_base = product_url(pdb.PRODUCT_CREDIT_PIPELINE, dealer_id)
     has_credit = pdb.dealer_has_any_product(
@@ -364,6 +377,7 @@ def dealer(dealer_id):
         lead_sources=pdb.list_lead_sources(),
         default_source=pdb.DEFAULT_LEAD_SOURCE,
         grants=grants,
+        grant_form_data=grant_form_data,
         credit_test_url=credit_test_url,
         vs=pdb.get_valuation_settings(dealer_id),
         recommended=pdb.RECOMMENDED,
