@@ -516,10 +516,10 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
     result_id ASC (it streams the remote clustered index); ORDER BY result_id DESC
     collapses the plan into a 180s+ timeout. So we fetch ascending up to a
     generous cap, then sort newest-first and slice to `limit` in Python."""
-    # Never show rows with a blank consumer_id on match_result, nor rejected
-    # (abandoned) leads — rejected = 1 once a lead ages past the send window unsent.
+    # Hide only rejected (abandoned) leads — rejected = 1 once a lead ages past the
+    # send window unsent. Rows with a blank consumer_id ARE shown (and sendable).
     # (matching_customer is applied in Python below — its Equifax view isn't joined.)
-    conds = ["m.consumer_id IS NOT NULL", "m.rejected = 0"]
+    conds = ["m.rejected = 0"]
     if matching_dealer:
         conds.append("d.dealer_name IS NOT NULL")
     if sent_status == "unsent":
