@@ -13,6 +13,7 @@ import logging
 import os
 from datetime import date
 
+import append_api
 import dlrpro_db as dlr
 import platform_db as pdb
 from pipeline_source import LINKED_SERVER, DB as CP_DB
@@ -328,6 +329,44 @@ def _equifax_finance_lines(v):
     return lines
 
 
+def _append_contact(result_id, lead):
+    """Phone/email append for one record via the imdatacenter API (fp+fe2) — run
+    ONCE per result_id (logged to dbo.credit_append_log for billing), then reused
+    from the log on repeat. Returns (email|None, [phones]). No-op (None, []) when
+    there's no result_id, the API isn't configured, or a lookup/call fails; a
+    failed API call is NOT logged, so it can retry next run (a matched OR empty
+    result IS logged, so it won't re-bill)."""
+    if not result_id:
+        return None, []
+    try:
+        row = pdb.get_append(result_id)
+    except Exception as e:
+        LOG.warning("append log lookup failed for result %s: %s", result_id, e)
+        return None, []
+    if row is not None:                              # already called — reuse the log
+        phones = (row.get("all_phones") or "").split("|") if row.get("all_phones") else []
+        return (row.get("email_appended") or None), [p for p in phones if p]
+    if not append_api.is_configured():
+        return None, []
+    try:
+        res = append_api.append(lead.get("first_name"), lead.get("last_name"),
+                                lead.get("address"), lead.get("city"),
+                                lead.get("state"), lead.get("zip"))
+    except Exception as e:
+        LOG.warning("append API call failed for result %s: %s", result_id, e)
+        return None, []
+    if res is None:                                  # HTTP/transport error — retry later
+        return None, []
+    email, phones = (res.get("email") or None), (res.get("phones") or [])
+    try:
+        pdb.record_append(result_id, lead.get("first_name"), lead.get("last_name"),
+                          lead.get("address"), lead.get("city"), lead.get("state"),
+                          lead.get("zip"), email, phones, res.get("status"))
+    except Exception as e:
+        LOG.warning("append log write failed for result %s: %s", result_id, e)
+    return email, phones
+
+
 def enrich_lead(lead, result_id=None, consumer_id=None):
     """Enrich `lead` in place:
 
@@ -372,12 +411,19 @@ def enrich_lead(lead, result_id=None, consumer_id=None):
     if model:
         lead["vehicle_model"] = model
 
+    # Phone/email append API (imdatacenter fp+fe2): run ONCE per record and log it
+    # for billing; on repeat, pull from the log table. Its email/phones become the
+    # PRIMARY contact (they're prepended below), pushing any prior primary into
+    # the additional list. No-op until IMDC_API_KEY/IMDC_CLIENT_ID are configured.
+    api_email, api_phones = _append_contact(result_id, lead)
+
     # Contact: gather ALL emails/phones from every source (best first), de-duped —
-    # the trigger view (consumer + appended), tbl_ownership, and the Equifax
-    # consumer tables (every instance). The first is the lead's primary contact;
-    # the rest are listed in the notes as "Additional Email/Phone".
+    # the append API first, then the trigger view (consumer + appended),
+    # tbl_ownership, and the Equifax consumer tables (every instance). The first is
+    # the lead's primary contact; the rest go in the notes as "Additional Email/Phone".
     ce = match_equifax_contacts(consumer_id)   # {"emails":[…], "phones":[…]} (equifax..Consumer*)
     emails = _dedupe_emails([
+        api_email,                                     # imdatacenter append (primary if found)
         lead.get("email"),                             # payload / customer_record
         trig.get("Email") if trig else None,           # trigger view — consumer
         trig.get("AppendedEmail") if trig else None,   # trigger view — appended
@@ -385,6 +431,7 @@ def enrich_lead(lead, result_id=None, consumer_id=None):
         *ce["emails"],                                 # equifax..ConsumerEmails (all instances)
     ])
     phones = _dedupe_phones([
+        *api_phones,                                   # imdatacenter append (primary if found)
         lead.get("phone"),
         trig.get("CellPhone") if trig else None,
         trig.get("HomePhone") if trig else None,

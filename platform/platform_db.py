@@ -481,6 +481,25 @@ def _ensure_pipeline_tables():
         " attempts INT NOT NULL,"
         " last_at SMALLDATETIME NULL,"
         " CONSTRAINT PK_pipeline_skips PRIMARY KEY (dealer_id, result_id))")
+    # Phone/email append API call log (imdatacenter fp+fe2) — one row per record,
+    # for billing reconciliation. result_id is unique (called once per record).
+    dlr.execute(
+        "IF OBJECT_ID(N'dbo.credit_append_log','U') IS NULL "
+        "CREATE TABLE dbo.credit_append_log ("
+        " id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,"
+        " result_id BIGINT NOT NULL,"
+        " first_name NVARCHAR(100) NULL,"
+        " last_name NVARCHAR(100) NULL,"
+        " address NVARCHAR(200) NULL,"
+        " city NVARCHAR(100) NULL,"
+        " state NVARCHAR(20) NULL,"
+        " zip VARCHAR(15) NULL,"
+        " email_appended NVARCHAR(200) NULL,"
+        " phone_appended VARCHAR(20) NULL,"
+        " all_phones NVARCHAR(400) NULL,"
+        " status NVARCHAR(40) NULL,"
+        " created DATETIME NULL,"
+        " CONSTRAINT UQ_credit_append_log_result UNIQUE (result_id))")
 
 
 def get_setting(key, default=None):
@@ -546,6 +565,30 @@ def bump_no_contact(dealers_id, result_id):
         "VALUES (%(d)s, %(r)s, 1, GETDATE())", v)
     row = dlr.one("SELECT attempts FROM dbo.pipeline_skips WHERE dealer_id=%(d)s AND result_id=%(r)s", v)
     return int(row["attempts"]) if row else 1
+
+
+# ----- Phone/email append API log (dbo.credit_append_log) -----
+
+def get_append(result_id):
+    """The append-API log row for this match result_id, or None. Presence means
+    the API was already called once for this record — don't call it again."""
+    return dlr.one("SELECT * FROM dbo.credit_append_log WHERE result_id=%(r)s",
+                   {"r": int(result_id)})
+
+
+def record_append(result_id, first_name, last_name, address, city, state, zip_code,
+                  email, phones, status=None):
+    """Log one append-API call (for billing reconciliation). `phones` is the list
+    of returned phone strings; the first is the primary. Idempotent on result_id."""
+    v = {"r": int(result_id), "f": first_name, "l": last_name, "a": address, "c": city,
+         "s": state, "z": zip_code, "em": (email or None),
+         "ph": (phones[0] if phones else None),
+         "all": ("|".join(phones) if phones else None), "st": status}
+    dlr.execute(
+        "IF NOT EXISTS (SELECT 1 FROM dbo.credit_append_log WHERE result_id=%(r)s) "
+        "INSERT INTO dbo.credit_append_log (result_id, first_name, last_name, address, city, "
+        "state, zip, email_appended, phone_appended, all_phones, status, created) VALUES "
+        "(%(r)s, %(f)s, %(l)s, %(a)s, %(c)s, %(s)s, %(z)s, %(em)s, %(ph)s, %(all)s, %(st)s, GETDATE())", v)
 
 
 # ----- Credit Pipeline monthly lead cap -----
