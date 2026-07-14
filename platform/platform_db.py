@@ -5,7 +5,7 @@ the dealer-leads and trade-in/credit apps (each adds this directory to sys.path)
 Public function names/signatures are unchanged from the old SQLite version.
 """
 
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import dlrpro_db as dlr
 from dlrpro_db import NOW
@@ -574,6 +574,35 @@ def get_append(result_id):
     the API was already called once for this record — don't call it again."""
     return dlr.one("SELECT * FROM dbo.credit_append_log WHERE result_id=%(r)s",
                    {"r": int(result_id)})
+
+
+# Circuit breaker: when the append API fails (e.g. 429 throttling), pause calls
+# for a cooldown so lead processing is never held up. Persisted in
+# platform_settings so it holds across the poller's fresh-process runs.
+APPEND_PAUSE_KEY = "append_api_paused_until"
+APPEND_COOLDOWN_MIN = 15
+
+
+def append_api_paused():
+    """True while the append API is in its post-failure cooldown."""
+    v = get_setting(APPEND_PAUSE_KEY)
+    if not v:
+        return False
+    try:
+        return datetime.fromisoformat(v) > datetime.utcnow()
+    except (ValueError, TypeError):
+        return False
+
+
+def pause_append_api(minutes=APPEND_COOLDOWN_MIN):
+    """Back off from the append API for `minutes` after a failure."""
+    set_setting(APPEND_PAUSE_KEY, (datetime.utcnow() + timedelta(minutes=minutes)).isoformat())
+
+
+def resume_append_api():
+    """Clear the append-API cooldown (call after a successful append)."""
+    if get_setting(APPEND_PAUSE_KEY):
+        set_setting(APPEND_PAUSE_KEY, "")
 
 
 def record_append(result_id, first_name, last_name, address, city, state, zip_code,

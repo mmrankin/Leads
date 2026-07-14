@@ -346,17 +346,19 @@ def _append_contact(result_id, lead):
     if row is not None:                              # already called — reuse the log
         phones = (row.get("all_phones") or "").split("|") if row.get("all_phones") else []
         return (row.get("email_appended") or None), [p for p in phones if p]
-    if not append_api.is_configured():
-        return None, []
+    if not append_api.is_configured() or pdb.append_api_paused():
+        return None, []                              # not set up, or in post-failure cooldown
     try:
         res = append_api.append(lead.get("first_name"), lead.get("last_name"),
                                 lead.get("address"), lead.get("city"),
                                 lead.get("state"), lead.get("zip"))
     except Exception as e:
         LOG.warning("append API call failed for result %s: %s", result_id, e)
+        res = None
+    if res is None:                                  # HTTP/transport error (e.g. 429) —
+        pdb.pause_append_api()                       # back off so leads aren't held up
         return None, []
-    if res is None:                                  # HTTP/transport error — retry later
-        return None, []
+    pdb.resume_append_api()                          # success -> clear any cooldown
     email, phones = (res.get("email") or None), (res.get("phones") or [])
     try:
         pdb.record_append(result_id, lead.get("first_name"), lead.get("last_name"),

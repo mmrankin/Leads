@@ -27,7 +27,7 @@ BASE_URL = os.environ.get("IMDC_BASE_URL", "https://api.imdatacenter.com/1.0/add
 API_KEY = os.environ.get("IMDC_API_KEY")
 CLIENT_ID = os.environ.get("IMDC_CLIENT_ID")
 
-_POLL_TRIES = 6          # ~ _POLL_TRIES * _POLL_WAIT seconds for a queued job
+_POLL_TRIES = 4          # ~ _POLL_TRIES * _POLL_WAIT seconds for a queued job
 _POLL_WAIT = 2.0
 
 
@@ -65,7 +65,7 @@ def _await_complete(data):
             return data
         time.sleep(_POLL_WAIT)
         try:
-            r = requests.get(BASE_URL.rstrip("/") + "/" + str(job_id), headers=_headers(), timeout=30)
+            r = requests.get(BASE_URL.rstrip("/") + "/" + str(job_id), headers=_headers(), timeout=15)
             data = r.json()
         except Exception as e:                       # noqa: BLE001 — best-effort poll
             LOG.warning("append poll failed (%s): %s", job_id, e)
@@ -89,7 +89,7 @@ def append(first_name, last_name, address, city, state, zip_code, middle_name=""
         "immediate": True,
     }
     try:
-        resp = requests.post(BASE_URL, json=payload, headers=_headers(), timeout=30)
+        resp = requests.post(BASE_URL, json=payload, headers=_headers(), timeout=15)
     except requests.RequestException as e:
         LOG.warning("append request error: %s", e)
         return None
