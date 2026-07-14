@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Watchdog for the Credit Pipeline poller. Every 5 minutes it checks the
+     poller's heartbeat (platform_settings 'pipeline_last_run'); if the poller
+     hasn't run in > PIPELINE_STALE_MINUTES (default 12) it reloads + kickstarts
+     the poller agent so leads keep flowing (unsent leads expire after ~30m). -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dealerplatform.pipeline.watchdog</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/markrankin/claude/credit-estimator/run_watchdog.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>300</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/markrankin/claude/deploy/watchdog.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/markrankin/claude/deploy/watchdog.err.log</string>
+</dict>
+</plist>

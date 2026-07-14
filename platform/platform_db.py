@@ -530,6 +530,28 @@ def set_pipeline_flow(enabled):
     set_setting(PIPELINE_FLOW_KEY, "1" if enabled else "0")
 
 
+# ----- Poller heartbeat (watchdog) -----
+# The poller stamps this at the start of every run; the watchdog reloads the
+# poller agent if it goes stale (unsent leads expire after ~30m, so a stalled
+# scheduler silently loses them).
+PIPELINE_HEARTBEAT_KEY = "pipeline_last_run"
+
+
+def record_pipeline_heartbeat():
+    set_setting(PIPELINE_HEARTBEAT_KEY, datetime.utcnow().isoformat())
+
+
+def pipeline_heartbeat_age_minutes():
+    """Minutes since the poller last ran, or None if it never has / is unparseable."""
+    v = get_setting(PIPELINE_HEARTBEAT_KEY)
+    if not v:
+        return None
+    try:
+        return (datetime.utcnow() - datetime.fromisoformat(v)).total_seconds() / 60.0
+    except (ValueError, TypeError):
+        return None
+
+
 # ----- Credit Pipeline sent ledger (dbo.sent) -----
 
 def is_sent(dealers_id, result_id):

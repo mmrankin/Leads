@@ -202,6 +202,8 @@ def send_lead(row, require_phone=False):
 
 def run(dry_run=False):
     pdb.init_db()
+    if not dry_run:
+        pdb.record_pipeline_heartbeat()   # so the watchdog knows the poller is alive
     # Abandon stale leads first — mark any unsent lead older than the reject window
     # as rejected. Runs every cycle regardless of the flow switch (staleness is
     # independent of whether we're actively sending); skipped only on a dry run.
