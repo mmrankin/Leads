@@ -545,6 +545,17 @@ def trigger_detail(result_id):
     return render_template("trigger_detail.html", d=detail, dealer=dealer)
 
 
+@app.route("/lead-flow/<int:result_id>")
+@require_login
+def lead_flow(result_id):
+    """Pipeline flowchart for one Credit Pipeline lead — where it sits in the
+    process (received → matched → enriched → cleared → sent), colour-coded."""
+    flow = leads_view.lead_flow(result_id)
+    if not flow:
+        abort(404)
+    return render_template("lead_flow.html", flow=flow)
+
+
 @app.route("/lead/<product>/<int:lead_id>")
 @require_login
 def lead_detail(product, lead_id):

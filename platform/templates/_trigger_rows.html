@@ -24,6 +24,9 @@
                 <button type="submit" class="btn" style="padding:4px 10px;font-size:12px;white-space:nowrap">Send Lead</button>
             </form>
             {% endif %}
+            {% if r.result_id %}<a href="{{ url_for('lead_flow', result_id=r.result_id) }}"
+               class="flow-link" title="Where this lead is in the process"
+               style="display:inline-block;margin-top:4px;font-size:12px;white-space:nowrap">Flow &rarr;</a>{% endif %}
         </td>
         <td>{{ r.result_id }}</td>
         <td>{% if r.CustomerName %}{% if r.lead_id %}<a href="{{ url_for('lead_detail', product='CREDIT_EST', lead_id=r.lead_id) }}">{{ r.CustomerName }}</a>{% elif r.result_id %}<a href="{{ url_for('trigger_detail', result_id=r.result_id) }}">{{ r.CustomerName }}</a>{% else %}{{ r.CustomerName }}{% endif %}{% else %}—{% endif %}</td>

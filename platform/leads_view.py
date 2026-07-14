@@ -1043,6 +1043,218 @@ def trigger_detail(result_id):
     }
 
 
+# ----- Per-lead pipeline flowchart (read-only inspector) -----
+
+_LEAD_FLOW_SQL = """SELECT m.result_id, m.consumer_id, m.consumer_zip,
+  CAST(m.matched_payload AS NVARCHAR(MAX)) AS matched_payload,
+  CONVERT(varchar(19), m.returned_at, 120) AS returned_at,
+  r.retailer_name, r.retailer_code,
+  c.first_name AS cr_first, c.last_name AS cr_last, c.email_address AS cr_email,
+  c.cell_phone, c.home_phone, c.work_phone,
+  c.address_line1 AS cr_addr, c.city AS cr_city, c.state AS cr_state, c.postal_code AS cr_zip
+FROM [{ls}].[{db}].[dbo].[match_result] m
+LEFT JOIN [{ls}].[{db}].[dbo].[customer_record] c ON c.customer_record_id = m.customer_record_id
+LEFT JOIN [{ls}].[{db}].[dbo].[retailer] r ON r.retailer_id = m.retailer_id
+WHERE m.result_id = %(rid)s"""
+
+
+def _pe():
+    """Lazily import pipeline_enrich (the credit-estimator dir is on sys.path in the
+    admin process). Its lookups are read-only — used here to preview the enrichment
+    WITHOUT the side effects (no append-API call, no DB writes)."""
+    import os
+    import sys
+    ce = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                      "credit-estimator")
+    if ce not in sys.path:
+        sys.path.insert(0, ce)
+    import pipeline_enrich
+    return pipeline_enrich
+
+
+def _st(name, status, detail=""):
+    """One flowchart stage. status: done|skip|issue|wait (green|grey|red|amber)."""
+    return {"name": name, "status": status, "detail": detail}
+
+
+def _pick(*vals):
+    for v in vals:
+        s = str(v).strip() if v is not None else ""
+        if s:
+            return s
+    return ""
+
+
+def lead_flow(result_id):
+    """Where a single Credit Pipeline lead sits in the process — a list of stages,
+    each {name, status, detail}. Read-only: mirrors the poller's enrichment using
+    its own lookups, but never calls the append API or writes anything.
+
+    Data sources: match_result / customer_record / retailer (the feed), the dlrPro
+    dealer + Credit Pipeline grant, the Equifax trigger view + consumer tables +
+    tbl_ownership (via pipeline_enrich), the imdatacenter append log, and — once
+    processed — the credit_leads row + sent ledger for the delivery outcome."""
+    rid = int(result_id)
+    pe = _pe()   # also gives us the CreditPipeline linked-server / DB names
+    base = dlr.one(_LEAD_FLOW_SQL.format(ls=pe.LINKED_SERVER, db=pe.CP_DB), {"rid": rid})
+    if not base:
+        return None
+    try:
+        payload = json.loads(base.get("matched_payload") or "{}") or {}
+    except (ValueError, TypeError):
+        payload = {}
+
+    # Processed lead (if the poller has run for it) + sent-ledger marker + append log.
+    cl = dlr.one("SELECT TOP 1 * FROM credit_leads WHERE result_id=%(rid)s ORDER BY id DESC",
+                 {"rid": rid})
+    sent = dlr.one("SELECT TOP 1 CONVERT(varchar(19),created,120) AS c "
+                   "FROM dbo.sent WHERE result_id=%(rid)s ORDER BY id DESC", {"rid": rid})
+    app = pdb.get_append(rid)
+
+    # Dealer (retailer_code = dealer_id) + active Credit Pipeline grant.
+    code = base.get("retailer_code")
+    dealer = pdb.get_dealer(code) if code else None
+    has_grant = pdb.dealer_has_product(code, pdb.PRODUCT_CREDIT_PIPELINE) if code else False
+
+    # Name / address (credit_leads if processed, else customer_record, else payload JSON).
+    first = _pick(cl and cl.get("first_name"), base.get("cr_first"), payload.get("first_name"))
+    last = _pick(cl and cl.get("last_name"), base.get("cr_last"), payload.get("last_name"))
+    addr = _pick(cl and cl.get("address"), base.get("cr_addr"), payload.get("address_line_1"))
+    zipc = _pick(cl and cl.get("zip"), base.get("cr_zip"), base.get("consumer_zip"),
+                 payload.get("consumer_zip"))
+    cust_name = " ".join(x for x in (first, last) if x) or "—"
+
+    # Read-only enrichment preview — same source order enrich_lead() uses, but the
+    # append comes from the log (get_append), never a fresh billed API call.
+    trig = pe.match_equifax_trigger(rid)
+    owner = pe.match_owner(last, addr, zipc, first)
+    ce = pe.match_equifax_contacts(base.get("consumer_id"))
+    api_email = (app.get("email_appended") or None) if app else None
+    api_phones = [p for p in (app.get("all_phones") or "").split("|") if p] \
+        if (app and app.get("all_phones")) else []
+    emails = pe._dedupe_emails([
+        api_email, base.get("cr_email"),
+        trig.get("Email") if trig else None, trig.get("AppendedEmail") if trig else None,
+        owner.get("email") if owner else None, *ce["emails"]])
+    phones = pe._dedupe_phones([
+        *api_phones, base.get("cell_phone"), base.get("home_phone"), base.get("work_phone"),
+        trig.get("CellPhone") if trig else None, trig.get("HomePhone") if trig else None,
+        trig.get("WorkPhone") if trig else None, trig.get("AppendedPhone") if trig else None,
+        pe._phone_str(owner.get("primary_phone")) if owner else None, *ce["phones"]])
+    veh_year = _pick(trig and trig.get("Year"), owner and owner.get("year"),
+                     cl and cl.get("vehicle_year"))
+    veh_make = _pick(trig and trig.get("Make"), owner and owner.get("make"),
+                     cl and cl.get("vehicle_make"))
+    veh_model = _pick(trig and trig.get("Model"), owner and owner.get("model"),
+                      cl and cl.get("vehicle_model"))
+    vin = _pick(trig and trig.get("VIN"), owner and owner.get("vin"))
+    vehicle = " ".join(x for x in (veh_year, veh_make, veh_model) if x)
+    credit_score = _pick(trig and trig.get("FICOAuto8"), trig and trig.get("FICO8"),
+                         cl and cl.get("est_score"))
+    credit_avail = bool(credit_score or (trig and (trig.get("RemainingBalance1") or
+                        trig.get("PaymentAmount1"))))
+
+    stages = []
+    # 1. Received
+    stages.append(_st("Received", "done", "returned %s" % (base.get("returned_at") or "")))
+    # 2. Matched to a dealer (+ active Credit Pipeline grant)
+    if dealer and has_grant:
+        stages.append(_st("Matched to a dealer", "done",
+                          "%s (%s)" % (dealer.get("dealer_name"), code)))
+    elif dealer:
+        stages.append(_st("Matched to a dealer", "issue",
+                          "%s — no active Credit Pipeline grant" % dealer.get("dealer_name")))
+    else:
+        stages.append(_st("Matched to a dealer", "issue",
+                          "retailer_code %s has no dealer" % (code or "?")))
+    # 3. Matched to a Consumer ID (Equifax trigger view row)
+    if trig:
+        stages.append(_st("Matched to a Consumer ID", "done",
+                          "consumer_id %s" % (base.get("consumer_id") or "—")))
+    else:
+        stages.append(_st("Matched to a Consumer ID", "skip",
+                          "no Equifax match — using other sources"))
+    # 4. Appended phone (imdatacenter API)
+    if app and api_phones:
+        stages.append(_st("Appended phone (API)", "done", pe._fmt_phone(api_phones[0])))
+    elif app:
+        stages.append(_st("Appended phone (API)", "skip", "no phone match"))
+    else:
+        stages.append(_st("Appended phone (API)", "skip", "append API not run yet"))
+    # 5. Appended email (imdatacenter API)
+    if app and api_email:
+        stages.append(_st("Appended email (API)", "done", api_email))
+    elif app:
+        stages.append(_st("Appended email (API)", "skip", "no email match"))
+    else:
+        stages.append(_st("Appended email (API)", "skip", "append API not run yet"))
+    # 6. Other phones (everything after the primary)
+    other_ph = phones[1:] if len(phones) > 1 else []
+    stages.append(_st("Other phones", "done" if other_ph else "skip",
+                      ", ".join(pe._fmt_phone(p) for p in other_ph) if other_ph else "none"))
+    # 7. Other emails
+    other_em = emails[1:] if len(emails) > 1 else []
+    stages.append(_st("Other emails", "done" if other_em else "skip",
+                      ", ".join(other_em) if other_em else "none"))
+    # 8. Vehicle added
+    stages.append(_st("Vehicle added", "done" if vehicle else "skip",
+                      (("VIN %s — " % vin) if vin else "") + vehicle if vehicle
+                      else "no vehicle match"))
+    # 9. Credit available
+    stages.append(_st("Credit available", "done" if credit_avail else "skip",
+                      ("est. score %s" % credit_score) if credit_score
+                      else ("estimated finance data" if credit_avail else "no credit data")))
+    # 10 + 11. Cleared to send + delivery
+    has_contact = bool(emails or phones)
+    status = (cl.get("email1_status") or "").lower() if cl else ""
+    if status == "sent" or (sent and not status):
+        stages.append(_st("Cleared to send", "done", "approved"))
+        stages.append(_st("Sent", "done",
+                          "%s (accepted by SendGrid)" % (sent.get("c") if sent else "")))
+    elif status == "failed":
+        stages.append(_st("Cleared to send", "done", "approved"))
+        stages.append(_st("Sent", "issue",
+                          "failed: %s" % (cl.get("email1_detail") or "delivery error")))
+    elif status in ("pending", "queued"):
+        stages.append(_st("Cleared to send", "done", "approved"))
+        stages.append(_st("Sent", "wait", status))
+    elif not dealer or not has_grant:
+        stages.append(_st("Cleared to send", "issue", "no active Credit Pipeline grant"))
+        stages.append(_st("Sent", "skip", "not sent"))
+    elif not has_contact:
+        stages.append(_st("Cleared to send", "issue", "no phone or email — cannot send"))
+        stages.append(_st("Sent", "skip", "not sent"))
+    else:
+        cap = ""
+        try:
+            mx = pdb.pipeline_max_leads(code)
+            did = dealer.get("id")
+            ms = pdb.sent_this_month(did) if did else 0
+            if mx and ms >= mx:
+                cap = "monthly cap reached (%d/%d)" % (ms, mx)
+        except Exception:                            # noqa: BLE001 — best-effort detail
+            pass
+        stages.append(_st("Cleared to send", "wait", cap or "waiting to send"))
+        stages.append(_st("Sent", "wait", "not yet"))
+
+    return {
+        "result_id": rid,
+        "customer": cust_name,
+        "dealer": dealer.get("dealer_name") if dealer else (base.get("retailer_name") or "—"),
+        "dealer_code": code,
+        "zip": zipc,
+        "returned_at": base.get("returned_at"),
+        "sent_at": sent.get("c") if sent else None,
+        "email1_status": cl.get("email1_status") if cl else None,
+        "email1_detail": cl.get("email1_detail") if cl else None,
+        "primary_email": emails[0] if emails else None,
+        "primary_phone": pe._fmt_phone(phones[0]) if phones else None,
+        "comments": cl.get("comments") if cl else None,
+        "adf_xml": cl.get("adf_xml") if cl else None,
+        "stages": stages,
+    }
+
+
 def get_lead_detail(product, lead_id):
     """Return (row_dict, groups, adf_xml) for a single lead, or (None, [], None)."""
     if product == "TRADE_IN":

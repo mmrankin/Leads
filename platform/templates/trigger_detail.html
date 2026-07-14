@@ -10,6 +10,7 @@
     Match result #{{ d.result_id }}
     {% if dealer %}· <a href="{{ url_for('dealer', dealer_id=dealer.dealer_id) }}">{{ dealer.dealer_name }}</a>{% endif %}
     {% if d.lead_id %}· <a href="{{ url_for('lead_detail', product='CREDIT_EST', lead_id=d.lead_id) }}">view the sent lead →</a>{% endif %}
+    · <a href="{{ url_for('lead_flow', result_id=d.result_id) }}">view the flow →</a>
 </p>
 
 {% for title, fields in d.sections %}
