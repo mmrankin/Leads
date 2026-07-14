@@ -147,5 +147,8 @@
         });
     });
 })();
+
+// Auto-refresh the page every 60 seconds for live volume numbers.
+setTimeout(function () { location.reload(); }, 60000);
 </script>
 {% endblock %}
