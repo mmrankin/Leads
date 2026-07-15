@@ -23,6 +23,7 @@ import leads_view
 import stats_view
 import health_view
 import append_view
+import map_view
 import stall_monitor
 
 # The Credit Pipeline send path (build ADF -> email -> store -> record in `sent`)
@@ -223,6 +224,15 @@ def append_report():
     return render_template("append.html",
                            a=append_view.append_stats(request.args.get("month")),
                            on_append=True)
+
+
+@app.route("/map")
+@require_login
+def lead_map():
+    """Map of where leads originated (by consumer state), over a date range."""
+    return render_template("map.html",
+                           m=map_view.leads_map(request.args.get("start"), request.args.get("end")),
+                           on_map=True)
 
 
 @app.route("/pipeline-flow", methods=["POST"])

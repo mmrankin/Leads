@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Lead Map{% endblock %}
+{% block content %}
+<style>
+  .mp-controls { display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap; margin-bottom:14px; }
+  .mp-presets { display:flex; gap:8px; flex-wrap:wrap; }
+  .mp-preset { padding:6px 12px; border:1px solid var(--line); border-radius:8px; text-decoration:none;
+               color:var(--muted); font-size:13px; font-weight:600; }
+  .mp-preset:hover { border-color:var(--accent); color:var(--txt); }
+  .mp-tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; margin:6px 0 18px; }
+  .mp-tile { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+  .mp-tile .k { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+  .mp-tile .v { font-size:24px; font-weight:700; margin-top:3px; }
+  .map-wrap { overflow-x:auto; }
+</style>
+
+<h1>Lead Origin Map</h1>
+<p class="subtitle">Where trigger leads came from, by consumer state. Choose a date range (up to 1 year).</p>
+
+<div class="card">
+  <form method="get" action="{{ url_for('lead_map') }}" class="mp-controls">
+    <div class="field" style="margin:0"><label>From</label><input type="date" name="start" value="{{ m.start }}"></div>
+    <div class="field" style="margin:0"><label>To</label><input type="date" name="end" value="{{ m.end }}"></div>
+    <button type="submit" class="btn">Apply</button>
+    <div class="mp-presets" style="margin-left:auto">
+      {% for p in m.presets %}
+      <a class="mp-preset" href="{{ url_for('lead_map') }}?start={{ p.start }}&end={{ p.end }}">Last {{ p.label }}</a>
+      {% endfor %}
+    </div>
+  </form>
+</div>
+
+<div class="mp-tiles">
+  <div class="mp-tile"><div class="k">Total leads</div><div class="v">{{ '{:,}'.format(m.total) }}</div></div>
+  <div class="mp-tile"><div class="k">States</div><div class="v">{{ m.states_hit }}</div></div>
+  <div class="mp-tile"><div class="k">Top state</div><div class="v">{% if m.by_state %}{{ m.by_state[0].state }} <span style="font-size:15px;color:var(--muted)">({{ '{:,}'.format(m.by_state[0].count) }})</span>{% else %}—{% endif %}</div></div>
+  <div class="mp-tile"><div class="k">Range</div><div class="v" style="font-size:15px;margin-top:8px">{{ m.start }} → {{ m.end }}</div></div>
+</div>
+
+<div class="card">
+  <h2>Leads by state</h2>
+  <div class="map-wrap">
+  {% set sz = 52 %}
+  <svg viewBox="0 0 {{ m.cols*sz }} {{ m.rows*sz }}" style="width:100%;max-width:720px;height:auto" xmlns="http://www.w3.org/2000/svg">
+    {% for c in m.cells %}
+      {% set x = c.col*sz %}{% set y = c.row*sz %}
+      <rect x="{{ x+3 }}" y="{{ y+3 }}" width="{{ sz-6 }}" height="{{ sz-6 }}" rx="6"
+            fill="#1d9e75" fill-opacity="{{ (0.15 + 0.8*c.intensity)|round(3) if c.count else 0.05 }}"
+            stroke="#2a313d" stroke-width="1"><title>{{ c.state }}: {{ '{:,}'.format(c.count) }} leads</title></rect>
+      <text x="{{ x+sz/2 }}" y="{{ y+sz/2-1 }}" text-anchor="middle" font-size="12" font-weight="700"
+            fill="{{ '#ffffff' if c.count else '#5b6472' }}">{{ c.state }}</text>
+      {% if c.count %}<text x="{{ x+sz/2 }}" y="{{ y+sz/2+12 }}" text-anchor="middle" font-size="9.5" fill="#cbd5e1">{{ '{:,}'.format(c.count) }}</text>{% endif %}
+    {% endfor %}
+  </svg>
+  </div>
+  <p class="subtitle" style="margin-top:10px">Darker = more leads. Hover a state for its count.</p>
+</div>
+
+<div class="card">
+  <h2>By state <span class="muted">({{ m.states_hit }})</span></h2>
+  {% if m.by_state %}
+  <div style="overflow-x:auto">
+  <table class="tbl nowrap">
+    <thead><tr><th>State</th><th>Leads</th><th>Share</th></tr></thead>
+    <tbody>
+      {% for s in m.by_state %}
+      <tr>
+        <td>{{ s.state }}</td>
+        <td>{{ '{:,}'.format(s.count) }}</td>
+        <td>{{ '%.1f'|format(100 * s.count / m.total) if m.total else 0 }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="subtitle">No leads in this range.</p>{% endif %}
+</div>
+{% endblock %}
