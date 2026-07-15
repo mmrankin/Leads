@@ -70,6 +70,13 @@
         <div class="name">{{ s.name }}</div>
         {% if s.detail %}<div class="detail">{{ s.detail }}</div>{% endif %}
         {% if loop.index in (4, 5) %}
+        {% if run and run.run_ts %}
+        <div class="detail" style="margin-top:5px;{{ 'color:#4fd1a5' if run.run_ok == '1' else 'color:#f08a89' }}">
+          Ran {{ run.run_ts }} —
+          {% if run.run_ok == '1' %}{{ (run.run_phone or 'no phone match') if loop.index == 4 else (run.run_email or 'no email match') }}
+          {% else %}API error {{ run.run_code }}{{ ': ' + run.run_err if run.run_err else '' }}{% endif %}
+        </div>
+        {% endif %}
         <form method="post" action="{{ url_for('lead_flow_append', result_id=flow.result_id) }}" style="margin-top:7px">
           <button type="submit" class="btn btn--ghost" style="padding:3px 11px;font-size:12px">↻ Run {{ 'phone' if loop.index == 4 else 'email' }} append</button>
         </form>

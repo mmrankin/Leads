@@ -723,26 +723,44 @@ def trigger_detail(result_id):
 @app.route("/lead-flow/<int:result_id>/append", methods=["POST"])
 @require_login
 def lead_flow_append(result_id):
-    """Run the imdatacenter phone+email append for one lead (steps 4 & 5)."""
+    """Run the imdatacenter phone+email append for one lead (steps 4 & 5), and
+    surface the run's timestamp + result/status back on the flow page."""
     if not _CP_SEND_OK:
         flash("Append unavailable — credit modules failed to load.", "error")
         return redirect(url_for("lead_flow", result_id=result_id))
+    from datetime import datetime as _dt
+    import append_api as _aa
+    run = {}
     try:
-        import json as _json, pipeline_enrich as _pe
-        LS, DB = _cp_source.LINKED_SERVER, _cp_source.DB
-        row = _cp_source.dlr.one(
-            "SELECT CAST(matched_payload AS NVARCHAR(MAX)) AS mp, consumer_zip "
-            "FROM [%s].[%s].[dbo].[match_result] WHERE result_id=%%(r)s" % (LS, DB),
-            {"r": result_id}) or {}
-        p = _json.loads(row.get("mp") or "{}") or {}
-        lead = {"first_name": p.get("first_name"), "last_name": p.get("last_name"),
-                "address": p.get("address_line_1"), "city": p.get("city"),
-                "state": p.get("state"), "zip": p.get("consumer_zip") or row.get("consumer_zip")}
-        email, phones = _pe._append_contact(result_id, lead)
-        flash("Append ran — %d phone(s), email: %s." % (len(phones or []), email or "none"), "ok")
+        existing = pdb.get_append(result_id)
+        if existing:                                  # already appended — show the logged result
+            ph = [p for p in (existing.get("all_phones") or "").split("|") if p]
+            run = {"run_ts": str(existing.get("created") or "")[:19], "run_ok": "1", "run_code": "logged",
+                   "run_phone": ph[0] if ph else "", "run_email": existing.get("email_appended") or ""}
+        else:
+            ls, db = _cp_source.LINKED_SERVER, _cp_source.DB
+            r = _cp_source.dlr.one(
+                "SELECT FirstName, LastName, Address1, City, State, ZipCode "
+                "FROM [%s].[%s].[dbo].[vw_EquifaxConsumerRecordTriggers] WHERE result_id=%%(r)s" % (ls, db),
+                {"r": result_id}) or {}
+            res = _aa.append_ex(r.get("FirstName"), r.get("LastName"), r.get("Address1"),
+                                r.get("City"), r.get("State"), r.get("ZipCode"))
+            ts = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+            if res["ok"]:
+                pdb.record_append(result_id, r.get("FirstName"), r.get("LastName"), r.get("Address1"),
+                                  r.get("City"), r.get("State"), r.get("ZipCode"),
+                                  res["email"], res["phones"], res.get("status"))
+                pdb.resume_append_api()
+                run = {"run_ts": ts, "run_ok": "1", "run_code": str(res["status_code"] or ""),
+                       "run_phone": (res["phones"][0] if res["phones"] else ""),
+                       "run_email": res["email"] or ""}
+            else:
+                pdb.pause_append_api()
+                run = {"run_ts": ts, "run_ok": "0", "run_code": str(res["status_code"] or "error"),
+                       "run_err": (res["error"] or "")[:140]}
     except Exception as e:
-        flash("Append failed: %s" % str(e)[:140], "error")
-    return redirect(url_for("lead_flow", result_id=result_id))
+        run = {"run_ts": "", "run_ok": "0", "run_code": "exception", "run_err": str(e)[:140]}
+    return redirect(url_for("lead_flow", result_id=result_id, **run))
 
 
 @app.route("/lead-flow/<int:result_id>/reject", methods=["POST"])
@@ -786,7 +804,10 @@ def lead_flow(result_id):
     flow = leads_view.lead_flow(result_id)
     if not flow:
         abort(404)
-    return render_template("lead_flow.html", flow=flow)
+    run = {k: request.args.get(k) for k in
+           ("run_ts", "run_ok", "run_code", "run_phone", "run_email", "run_err")
+           if request.args.get(k)}
+    return render_template("lead_flow.html", flow=flow, run=run)
 
 
 @app.route("/lead/<product>/<int:lead_id>")

@@ -102,3 +102,39 @@ def append(first_name, last_name, address, city, state, zip_code, middle_name=""
         LOG.warning("append API non-JSON response: %s", e)
         return None
     return _parse(_await_complete(data))
+
+
+def append_ex(first_name, last_name, address, city, state, zip_code, middle_name=""):
+    """Like append(), but returns diagnostics for the UI:
+    {"ok": bool, "status_code": int|None, "email": str|None, "phones": [str,…],
+     "status": str|None, "error": str|None}. Never raises."""
+    out = {"ok": False, "status_code": None, "email": None, "phones": [],
+           "status": None, "error": None}
+    if not is_configured():
+        out["error"] = "append API not configured"
+        return out
+    payload = {
+        "address": {"address1": address or "", "address2": "",
+                    "city": city or "", "state": state or "", "zip": zip_code or ""},
+        "client_id": CLIENT_ID,
+        "name": {"first_name": first_name or "", "last_name": last_name or "",
+                 "middle_name": middle_name or "", "prefix_name": "", "suffix_name": ""},
+        "process": ["fp", "fe2"], "immediate": True}
+    try:
+        resp = requests.post(BASE_URL, json=payload, headers=_headers(), timeout=15)
+    except requests.RequestException as e:
+        out["error"] = str(e)[:200]
+        return out
+    out["status_code"] = resp.status_code
+    if not (200 <= resp.status_code < 300):
+        out["error"] = (resp.text or "")[:200]
+        return out
+    try:
+        data = resp.json()
+    except ValueError:
+        out["error"] = "non-JSON response"
+        return out
+    parsed = _parse(_await_complete(data))
+    out.update(ok=True, email=parsed.get("email"),
+               phones=parsed.get("phones") or [], status=parsed.get("status"))
+    return out
