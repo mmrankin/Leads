@@ -222,9 +222,11 @@ def poller_restart():
 def append_report():
     """Phone/email append activity (imdatacenter) + sends, by day and month."""
     un_rows, un_total = append_view.unappended(limit=300)
+    ap_rows, ap_total = append_view.appended(limit=300)
     return render_template("append.html",
                            a=append_view.append_stats(request.args.get("month")),
                            unappended=un_rows, unappended_total=un_total,
+                           appended=ap_rows, appended_total=ap_total,
                            drain_running=(pdb.get_setting("append_drain_running") == "1"),
                            on_append=True)
 
@@ -291,6 +293,27 @@ def append_diag(result_id):
     except Exception as e:
         dbg["log_error"] = str(e)[:200]
     return jsonify(dbg)
+
+
+@app.route("/append/send/<int:result_id>", methods=["POST"])
+@require_login
+def append_send(result_id):
+    """Send one appended lead to its dealer (from the Appended report)."""
+    if not _CP_SEND_OK:
+        flash("Send unavailable — credit modules failed to load.", "error")
+        return redirect(url_for("append_report"))
+    row = _cp_source.fetch_one(result_id)
+    if not row:
+        flash(f"Result #{result_id} can't be sent (already sent, or no matched dealer).", "error")
+        return redirect(url_for("append_report"))
+    ok, reason = _cp_eligible(row)
+    if not ok:
+        flash(f"Result #{result_id} not sent — {reason}.", "error")
+        return redirect(url_for("append_report"))
+    status, detail, lead_id = _cp_send_lead(row)
+    flash(f"Result #{result_id}: {status} — {detail}",
+          "ok" if status in ("sent", "pending") else "error")
+    return redirect(url_for("append_report"))
 
 
 @app.route("/append/all", methods=["POST"])

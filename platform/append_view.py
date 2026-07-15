@@ -54,6 +54,52 @@ def unappended(limit=300):
         })
     return out, int(total)
 
+
+_APPENDED_SQL = (
+    "SELECT TOP {limit} al.result_id, al.first_name, al.last_name, al.email_appended, al.all_phones, "
+    "CONVERT(varchar(19), al.created, 120) AS appended_at, v.City, v.State, d.dealer_name, "
+    "CASE WHEN dp.dealer_id IS NULL THEN '-' WHEN dp.paused = 1 THEN 'P' "
+    "     WHEN (dp.valid_from IS NULL OR dp.valid_from <= CONVERT(date,GETDATE())) "
+    "          AND (dp.valid_to IS NULL OR dp.valid_to >= CONVERT(date,GETDATE())) THEN 'Y' "
+    "     ELSE '-' END AS cp_status, "
+    "CONVERT(varchar(19), s.created, 120) AS sent_at "
+    "FROM dlrPro.dbo.credit_append_log al "
+    "LEFT JOIN [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecordTriggers] v ON v.result_id = al.result_id "
+    "LEFT JOIN dlrPro.dbo.dealers d ON d.dealer_id = v.dealercode "
+    "LEFT JOIN dlrPro.dbo.dealer_products dp ON dp.dealer_id = d.dealer_id AND dp.product_code = 'CREDIT_PIPELINE' "
+    "LEFT JOIN dlrPro.dbo.[sent] s ON s.result_id = al.result_id "
+    "WHERE NULLIF(LTRIM(RTRIM(al.all_phones)),'') IS NOT NULL "
+    "   OR NULLIF(LTRIM(RTRIM(al.email_appended)),'') IS NOT NULL "
+    "ORDER BY al.created DESC")
+
+
+def appended(limit=300):
+    """Successfully-appended records (a phone or email was returned), with the
+    matched dealer, CP status, and sent status. Returns (rows, total). A row is
+    'sendable' when it isn't sent yet and its dealer is active (CP = Y)."""
+    try:
+        total = dlr.one(
+            "SELECT COUNT(*) c FROM dlrPro.dbo.credit_append_log al "
+            "WHERE NULLIF(LTRIM(RTRIM(al.all_phones)),'') IS NOT NULL "
+            "   OR NULLIF(LTRIM(RTRIM(al.email_appended)),'') IS NOT NULL")["c"]
+        rows = dlr.query(_APPENDED_SQL.format(limit=int(limit), ls=LINKED_SERVER, db=CP_DB))
+    except Exception:
+        return [], 0
+    out = []
+    for r in rows:
+        phones = [p for p in (r.get("all_phones") or "").split("|") if p]
+        cp = (r.get("cp_status") or "-").strip()
+        out.append({
+            "result_id": r.get("result_id"),
+            "name": " ".join(x for x in (r.get("first_name"), r.get("last_name")) if x) or "—",
+            "location": ", ".join(x for x in (r.get("City"), r.get("State")) if x) or "—",
+            "dealer": r.get("dealer_name") or "—", "cp": cp,
+            "phone": phones[0] if phones else "", "email": r.get("email_appended") or "",
+            "appended_at": r.get("appended_at"), "sent_at": r.get("sent_at"),
+            "sendable": (not r.get("sent_at")) and cp == "Y",
+        })
+    return out, int(total)
+
 MONTHS_BACK = 3          # selector goes back this many months
 APPEND_UNIT_COST = 0.025  # $ per phone match + $ per email match (cost estimate)
 

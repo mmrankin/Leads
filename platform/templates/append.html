@@ -107,6 +107,41 @@
 </div>
 
 <div class="card">
+  <h2>Appended records <span class="muted">({{ '{:,}'.format(appended_total) }})</span></h2>
+  <p class="subtitle">Records that got a phone/email appended. If delivered, the send date/time is shown; if not yet sent and the dealer is on (CP = Y, not paused), you can send it here.</p>
+  {% if appended %}
+  <div style="overflow-x:auto">
+  <table class="tbl nowrap">
+    <thead><tr><th>Result</th><th>Name</th><th>Matched Dealer</th><th>CP</th><th>Phone</th><th>Email</th><th>Appended</th><th>Sent / Action</th></tr></thead>
+    <tbody>
+      {% for rec in appended %}
+      <tr>
+        <td><a href="{{ url_for('lead_flow', result_id=rec.result_id) }}">{{ rec.result_id }}</a></td>
+        <td>{{ rec.name }}</td>
+        <td>{{ rec.dealer }}</td>
+        <td>{% if rec.cp == 'Y' %}<span style="color:#4fd1a5;font-weight:700">Y</span>{% elif rec.cp == 'P' %}<span style="color:#e0a83e;font-weight:700">P</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+        <td>{{ rec.phone or '—' }}</td>
+        <td>{{ rec.email or '—' }}</td>
+        <td class="muted">{{ rec.appended_at or '' }}</td>
+        <td>
+          {% if rec.sent_at %}<span style="color:#4fd1a5">Sent {{ rec.sent_at }}</span>
+          {% elif rec.sendable %}
+          <form method="post" action="{{ url_for('append_send', result_id=rec.result_id) }}" style="margin:0"
+                onsubmit="return confirm('Send this lead to {{ rec.dealer }} now?')">
+            <button type="submit" class="btn" style="padding:3px 12px;font-size:12px">Send lead</button>
+          </form>
+          {% else %}<span class="muted">not sent{% if rec.cp != 'Y' %} · dealer off{% endif %}</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if appended_total > appended|length %}<p class="subtitle" style="margin-top:8px">Showing the {{ appended|length }} most recent of {{ '{:,}'.format(appended_total) }}.</p>{% endif %}
+  {% else %}<p class="subtitle">No successfully-appended records yet.</p>{% endif %}
+</div>
+
+<div class="card">
   <h2>Not yet appended <span class="muted">({{ '{:,}'.format(unappended_total) }})</span></h2>
   <p class="subtitle">Trigger-view records with no phone/email append call yet. The poller also drains these automatically over time.</p>
   <div style="display:flex;gap:14px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
