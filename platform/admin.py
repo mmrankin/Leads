@@ -47,6 +47,14 @@ SETUP_PASSWORD = os.environ.get("SETUP_PASSWORD", "")
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
+# Stall monitor: a daemon thread in this always-on web app watches poller health
+# and texts / self-heals on a stall (the launchd scheduler itself is unreliable).
+try:
+    import stall_monitor
+    stall_monitor.start()
+except Exception as _sm_exc:  # never let the monitor block the admin app
+    pass
+
 
 # Cache-bust static CSS by its mtime so browsers pick up style changes after a deploy.
 _STYLE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "style.css")
