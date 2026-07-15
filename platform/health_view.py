@@ -9,7 +9,7 @@ heartbeat to it); log timestamps are the prod box's local time.
 
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import dlrpro_db as dlr
 import platform_db as pdb
@@ -107,6 +107,27 @@ def send_health():
     h["append_calls_today"] = a.get("calls")
     h["append_phone_today"] = a.get("with_phone")
     h["append_email_today"] = a.get("with_email")
+    # Sends per hour, last 24h (oldest -> newest), for the status chart.
+    hr_rows = _q(lambda: dlr.query(
+        "SELECT DATEADD(hour, DATEDIFF(hour,0,created),0) AS hr, COUNT(*) AS c "
+        "FROM dbo.sent WHERE created >= DATEADD(hour,-24,GETDATE()) "
+        "GROUP BY DATEADD(hour, DATEDIFF(hour,0,created),0)"), []) or []
+    hr_map = {}
+    for r in hr_rows:
+        hh = r.get("hr")
+        if hh is not None:
+            hr_map[(hh.year, hh.month, hh.day, hh.hour)] = r.get("c") or 0
+    cur_hour = datetime.now().replace(minute=0, second=0, microsecond=0)
+    buckets, hmax = [], 0
+    for i in range(23, -1, -1):
+        b = cur_hour - timedelta(hours=i)
+        cnt = hr_map.get((b.year, b.month, b.day, b.hour), 0)
+        hmax = max(hmax, cnt)
+        buckets.append({"label": b.strftime("%-I%p").lower(), "hour24": b.strftime("%H"), "count": cnt})
+    h["sent_by_hour"] = buckets
+    h["sent_by_hour_max"] = hmax
+    h["sent_24h"] = sum(b["count"] for b in buckets)
+
     h["append_paused"] = bool(_q(pdb.append_api_paused, False))
     h["append_configured"] = bool(os.environ.get("IMDC_API_KEY") and os.environ.get("IMDC_CLIENT_ID"))
 

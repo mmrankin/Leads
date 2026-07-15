@@ -80,15 +80,18 @@
                         <svg viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
                         <span>Buckets</span></a>
                 </div>
-                <div class="nav-parent {{ 'open' if on_products or on_crm or on_sources or on_subsources else '' }}">
+                <div class="nav-parent {{ 'open' if on_products or on_crm or on_sources or on_subsources or on_bcc else '' }}">
                     <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
                     <span>Admin</span>
                     <svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
                 </div>
-                <div class="nav-sub {{ 'open' if on_products or on_crm or on_sources or on_subsources else '' }}">
+                <div class="nav-sub {{ 'open' if on_products or on_crm or on_sources or on_subsources or on_bcc else '' }}">
                     <a class="nav-item {{ 'active' if on_products else '' }}" href="{{ url_for('products') }}">
                         <svg viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4 8 4 8-4zM4 7v10l8 4 8-4V7M12 11v10"/></svg>
                         <span>Products</span></a>
+                    <a class="nav-item {{ 'active' if on_bcc else '' }}" href="{{ url_for('bcc_settings') }}">
+                        <svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 8l8 5 8-5"/></svg>
+                        <span>Lead BCC</span></a>
                     <a class="nav-item {{ 'active' if on_crm else '' }}" href="{{ url_for('crm_types') }}">
                         <svg viewBox="0 0 24 24"><path d="M12 3c-4 0-7 1-7 3v12c0 2 3 3 7 3s7-1 7-3V6c0-2-3-3-7-3zM5 6c0 1.5 3 2.5 7 2.5s7-1 7-2.5M5 12c0 1.5 3 2.5 7 2.5s7-1 7-2.5"/></svg>
                         <span>CRM Types</span></a>

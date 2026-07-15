@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Lead BCC{% endblock %}
+{% block content %}
+<h1>Lead Email BCC</h1>
+<p class="subtitle">Everyone on this list is BCC'd on every Credit Pipeline lead email sent to a dealer. Changes take effect on the next lead — no restart needed.</p>
+
+<div class="card">
+  <h2>BCC recipients <span class="muted">({{ bcc|length }})</span></h2>
+  {% if bcc %}
+  <table class="tbl">
+    <thead><tr><th>Email</th><th style="width:6rem"></th></tr></thead>
+    <tbody>
+      {% for e in bcc %}
+      <tr>
+        <td>{{ e }}</td>
+        <td>
+          <form method="post" action="{{ url_for('bcc_remove') }}" style="margin:0"
+                onsubmit="return confirm('Remove {{ e }} from the BCC list?')">
+            <input type="hidden" name="email" value="{{ e }}">
+            <button class="link-btn" type="submit">remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="subtitle">No BCC recipients — lead emails go only to the dealer.</p>
+  {% endif %}
+
+  <h3>Add recipient</h3>
+  <form method="post" action="{{ url_for('bcc_add') }}" class="row" style="align-items:flex-end;max-width:520px">
+    <div class="field" style="flex:1"><label>Email</label>
+      <input type="email" name="email" placeholder="name@example.com" required></div>
+    <button type="submit" class="btn">Add</button>
+  </form>
+</div>
+{% endblock %}

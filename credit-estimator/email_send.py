@@ -47,13 +47,23 @@ def _save_to_outbox(dealer, adf_xml, lead_id):
     return path
 
 
+def _lead_bcc():
+    """Admin-editable BCC list from the DB (platform_settings), falling back to
+    the built-in ADF_BCC default if the DB isn't reachable."""
+    try:
+        import platform_db as _pdb
+        return _pdb.get_lead_bcc()
+    except Exception:
+        return ADF_BCC
+
+
 def send_adf(dealer, adf_xml, lead_id, lead=None, bcc=None):
     """Send the ADF/XML to the dealer's leadEmailAddress. bcc overrides the BCC
-    list (defaults to the Credit Pipeline ADF_BCC).
+    list (defaults to the admin-editable Credit Pipeline lead BCC).
 
     Returns (status, detail) where status is 'sent', 'failed', or 'pending'.
     """
-    bcc_list = ADF_BCC if bcc is None else bcc
+    bcc_list = _lead_bcc() if bcc is None else bcc
     to_email = (dealer.get("lead_email_address") or "").strip()
     if not to_email:
         return "failed", "Dealer has no leadEmailAddress configured."

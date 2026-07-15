@@ -534,6 +534,32 @@ def set_pipeline_flow(enabled):
     set_setting(PIPELINE_FLOW_KEY, "1" if enabled else "0")
 
 
+# ----- Lead BCC list (admin-editable; used by the lead email sender) -----
+LEAD_BCC_KEY = "lead_bcc"
+DEFAULT_LEAD_BCC = "justinstull@rmadataplus.com,robbazaren@rmadataplus.com,mark@rmadataplus.com"
+
+
+def get_lead_bcc():
+    """BCC recipients for Credit Pipeline lead emails, as a list. Seeds the
+    setting with the built-in default the first time it's read so the list is
+    editable and the default addresses are 'in it'."""
+    v = get_setting(LEAD_BCC_KEY)
+    if v is None:
+        v = DEFAULT_LEAD_BCC
+        try:
+            set_setting(LEAD_BCC_KEY, v)
+        except Exception:
+            pass
+    return [e.strip() for e in (v or "").split(",") if e.strip()]
+
+
+def set_lead_bcc(emails):
+    """emails: list/tuple or comma-separated string."""
+    if isinstance(emails, (list, tuple)):
+        emails = ",".join(e.strip() for e in emails if e.strip())
+    set_setting(LEAD_BCC_KEY, emails or "")
+
+
 # ----- Send interval (per-dealer spacing) -----
 PIPELINE_INTERVAL_KEY = "pipeline_interval_min"
 

@@ -270,6 +270,39 @@ def dealer_pause():
     return redirect(url_for("dealer", dealer_id=dealer_id))
 
 
+@app.route("/bcc")
+@require_login
+def bcc_settings():
+    """Manage the BCC recipient list for Credit Pipeline lead emails."""
+    return render_template("bcc.html", bcc=pdb.get_lead_bcc(), on_bcc=True)
+
+
+@app.route("/bcc/add", methods=["POST"])
+@require_login
+def bcc_add():
+    email = (request.form.get("email") or "").strip()
+    if "@" not in email or "." not in email.split("@")[-1]:
+        flash("Enter a valid email address.", "error")
+    else:
+        cur = pdb.get_lead_bcc()
+        if email.lower() in [e.lower() for e in cur]:
+            flash(f"{email} is already on the BCC list.", "error")
+        else:
+            cur.append(email)
+            pdb.set_lead_bcc(cur)
+            flash(f"Added {email} to the BCC list.", "ok")
+    return redirect(url_for("bcc_settings"))
+
+
+@app.route("/bcc/remove", methods=["POST"])
+@require_login
+def bcc_remove():
+    email = (request.form.get("email") or "").strip()
+    pdb.set_lead_bcc([e for e in pdb.get_lead_bcc() if e.lower() != email.lower()])
+    flash(f"Removed {email} from the BCC list.", "ok")
+    return redirect(url_for("bcc_settings"))
+
+
 @app.route("/products")
 @require_login
 def products():
