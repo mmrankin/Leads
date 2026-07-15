@@ -178,7 +178,7 @@
           </form>
           {% else %}<span class="muted">not sent{% if u.cp != 'Y' %} · dealer off{% endif %}</span>{% endif %}
         </td>
-        <td><button type="button" class="link-btn" style="color:var(--accent)" onclick="runDiag({{ u.result_id }})">append</button></td>
+        <td><button type="button" class="btn" style="padding:3px 12px;font-size:12px;background:#4fd1a5;border-color:#4fd1a5;color:#0b0e13" onclick="runDiag({{ u.result_id }})">Append</button></td>
       </tr>
       {% endfor %}
     </tbody>
