@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Append Activity{% endblock %}
+{% block content %}
+<style>
+  .ap-tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; margin:14px 0 18px; }
+  .ap-tile { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+  .ap-tile .k { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+  .ap-tile .v { font-size:24px; font-weight:700; margin-top:3px; }
+  .ap-months { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+  .ap-month { padding:6px 12px; border:1px solid var(--line); border-radius:8px; text-decoration:none;
+              color:var(--muted); font-size:13px; font-weight:600; }
+  .ap-month.sel { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .ap-legend { display:flex; gap:16px; font-size:12px; color:var(--muted); margin:6px 0 2px; }
+  .ap-legend .sw { display:inline-block; width:11px; height:11px; border-radius:2px; margin-right:5px; vertical-align:middle; }
+  .chart-wrap { overflow-x:auto; }
+  .c-phone { color:#1d9e75; } .c-email { color:#378add; } .c-sends { color:#e0a83e; }
+</style>
+
+<h1>Append Activity</h1>
+<p class="subtitle">imdatacenter phone/email appends (each call attempts both) and lead deliveries. A "phone/email append" is a call that returned a match — the billable unit at ${{ '%.3f'|format(0.015) }} each.</p>
+
+<div class="ap-months">
+  {% for m in a.months %}
+  <a class="ap-month {{ 'sel' if m.selected else '' }}" href="{{ url_for('append_report') }}?month={{ m.ym }}">{{ m.label }}</a>
+  {% endfor %}
+</div>
+
+<div class="ap-tiles">
+  <div class="ap-tile"><div class="k">API calls</div><div class="v">{{ a.summary.calls }}</div></div>
+  <div class="ap-tile"><div class="k">Phone appends</div><div class="v c-phone">{{ a.summary.phone }}</div></div>
+  <div class="ap-tile"><div class="k">Email appends</div><div class="v c-email">{{ a.summary.email }}</div></div>
+  <div class="ap-tile"><div class="k">Sends</div><div class="v c-sends">{{ a.summary.sends }}</div></div>
+  <div class="ap-tile"><div class="k">Est. cost</div><div class="v">${{ '%.2f'|format(a.summary.cost) }}</div></div>
+</div>
+
+<div class="card">
+  <h2>{{ a.selected_label }} — appends by day</h2>
+  <div class="ap-legend">
+    <span><span class="sw" style="background:#1d9e75"></span>Phone appends</span>
+    <span><span class="sw" style="background:#378add"></span>Email appends</span>
+  </div>
+  <div class="chart-wrap">
+  {% set n = a.by_day|length %}
+  {% set W = 900 %}{% set H = 200 %}{% set base = 210 %}{% set left = 26 %}
+  {% set gw = (W - left - 8) / n %}
+  {% set bw = (gw - 2) / 2 %}
+  {% set mx = a.chart_max if a.chart_max > 0 else 1 %}
+  <svg viewBox="0 0 {{ W }} 236" style="width:100%;min-width:700px;height:auto" xmlns="http://www.w3.org/2000/svg">
+    <line x1="{{ left }}" y1="{{ base }}" x2="{{ W-6 }}" y2="{{ base }}" stroke="#2a313d"/>
+    <text x="2" y="16" fill="#6b7585" font-size="10">{{ mx }}</text>
+    <line x1="{{ left }}" y1="10" x2="{{ W-6 }}" y2="10" stroke="#1d2430"/>
+    {% for d in a.by_day %}
+      {% set x = left + loop.index0 * gw %}
+      {% set ph = (d.phone / mx * H)|round(1) %}
+      {% set eh = (d.email / mx * H)|round(1) %}
+      {% if d.phone %}<rect x="{{ x }}" y="{{ base - ph }}" width="{{ bw|round(1) }}" height="{{ ph }}" fill="#1d9e75"><title>{{ d.date }}: {{ d.phone }} phone</title></rect>{% endif %}
+      {% if d.email %}<rect x="{{ (x + bw)|round(1) }}" y="{{ base - eh }}" width="{{ bw|round(1) }}" height="{{ eh }}" fill="#378add"><title>{{ d.date }}: {{ d.email }} email</title></rect>{% endif %}
+      {% if d.day == 1 or d.day % 5 == 0 %}<text x="{{ (x + bw)|round(1) }}" y="{{ base + 14 }}" fill="#6b7585" font-size="9" text-anchor="middle">{{ d.day }}</text>{% endif %}
+    {% endfor %}
+  </svg>
+  </div>
+</div>
+
+<div class="card">
+  <h2>By day — {{ a.selected_label }}</h2>
+  <div style="overflow-x:auto">
+  <table class="tbl nowrap">
+    <thead><tr><th>Date</th><th>API calls</th><th>Phone appends</th><th>Email appends</th><th>Sends</th></tr></thead>
+    <tbody>
+      {% for d in a.by_day if d.calls or d.sends %}
+      <tr>
+        <td>{{ d.date }}</td><td>{{ d.calls }}</td>
+        <td class="c-phone">{{ d.phone }}</td><td class="c-email">{{ d.email }}</td>
+        <td class="c-sends">{{ d.sends }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">No append or send activity this month.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr style="font-weight:700;border-top:2px solid var(--line)">
+      <td>Total</td><td>{{ a.summary.calls }}</td><td class="c-phone">{{ a.summary.phone }}</td>
+      <td class="c-email">{{ a.summary.email }}</td><td class="c-sends">{{ a.summary.sends }}</td>
+    </tr></tfoot>
+  </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>By month</h2>
+  <div style="overflow-x:auto">
+  <table class="tbl nowrap">
+    <thead><tr><th>Month</th><th>API calls</th><th>Phone appends</th><th>Email appends</th><th>Sends</th></tr></thead>
+    <tbody>
+      {% for m in a.by_month %}
+      <tr>
+        <td><a href="{{ url_for('append_report') }}?month={{ m.ym }}">{{ m.label }}</a></td>
+        <td>{{ m.calls }}</td><td class="c-phone">{{ m.phone }}</td>
+        <td class="c-email">{{ m.email }}</td><td class="c-sends">{{ m.sends }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

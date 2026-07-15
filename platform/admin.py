@@ -22,6 +22,7 @@ import platform_db as pdb
 import leads_view
 import stats_view
 import health_view
+import append_view
 
 # The Credit Pipeline send path (build ADF -> email -> store -> record in `sent`)
 # lives in the credit app and is shared with the poller. Import it so the admin's
@@ -200,6 +201,15 @@ def stats_leads():
 def status():
     """Dashboard: health of the automated Credit Pipeline send process."""
     return render_template("status.html", h=health_view.send_health(), on_status=True)
+
+
+@app.route("/append")
+@require_login
+def append_report():
+    """Phone/email append activity (imdatacenter) + sends, by day and month."""
+    return render_template("append.html",
+                           a=append_view.append_stats(request.args.get("month")),
+                           on_append=True)
 
 
 @app.route("/pipeline-flow", methods=["POST"])
