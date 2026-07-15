@@ -111,10 +111,8 @@
   <p class="subtitle">Trigger-view records with no phone/email append call yet. The poller also drains these automatically over time.</p>
   <div style="display:flex;gap:14px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
     {% if unappended_total %}
-    <form method="post" action="{{ url_for('append_all') }}" style="margin:0"
-          onsubmit="return confirm('Run phone + email append on all {{ '{:,}'.format(unappended_total) }} un-appended records? Each is a paid API call (~${{ '%.2f'|format(unappended_total * a.unit_cost * 2) }} total est.).')">
-      <button type="submit" class="btn" {{ 'disabled' if drain_running else '' }}>Append all ({{ '{:,}'.format(unappended_total) }})</button>
-    </form>
+    <button type="button" class="btn" {{ 'disabled' if drain_running else '' }}
+            onclick="appendAll({{ unappended[0].result_id if unappended else 0 }})">Append all ({{ '{:,}'.format(unappended_total) }})</button>
     {% endif %}
     {% if drain_running %}<span class="c-phone" style="font-weight:600">● Append-all running in the background — refresh to watch the count drop.</span>{% endif %}
   </div>
@@ -126,11 +124,7 @@
       {% for u in unappended %}
       <tr>
         <td>{{ u.result_id }}</td><td>{{ u.name }}</td><td>{{ u.location }}</td><td>{{ u.zip }}</td>
-        <td>
-          <form method="post" action="{{ url_for('append_one', result_id=u.result_id) }}" style="margin:0">
-            <button type="submit" class="link-btn" style="color:var(--accent)">append</button>
-          </form>
-        </td>
+        <td><button type="button" class="link-btn" style="color:var(--accent)" onclick="runDiag({{ u.result_id }})">append</button></td>
       </tr>
       {% endfor %}
     </tbody>
@@ -141,4 +135,91 @@
   <p class="subtitle">Every trigger-view record has been appended. 🎉</p>
   {% endif %}
 </div>
+
+<style>
+  #diag-modal .modal-box { width:min(1150px,96vw); max-height:90vh; }
+  .diag-sub { color:var(--muted); font-size:12.5px; margin:2px 0 12px; }
+  .diag-stream { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .diag-label { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; margin-bottom:5px; }
+  .diag-col { background:#0b0e13; border:1px solid var(--line); border-radius:8px; padding:12px;
+              font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre-wrap;
+              word-break:break-word; overflow:auto; max-height:64vh; margin:0; }
+  #diag-sent { color:#85b7eb; }
+  #diag-recv { color:#7fdcb0; } #diag-recv.bad { color:#f08a89; }
+  @media(max-width:760px){ .diag-stream { grid-template-columns:1fr; } }
+</style>
+
+<div id="diag-modal" class="modal" style="display:none">
+  <div class="modal-backdrop"></div>
+  <div class="modal-box">
+    <div class="modal-head">
+      <strong id="diag-title">Append diagnostic</strong>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button type="button" class="btn btn--ghost" id="diag-copy" style="padding:3px 11px;font-size:12px">Copy</button>
+        <button type="button" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+    </div>
+    <div class="diag-sub" id="diag-sub"></div>
+    <div class="diag-stream">
+      <div><div class="diag-label">Sent &rarr; imdatacenter</div><pre class="diag-col" id="diag-sent"></pre></div>
+      <div><div class="diag-label">&larr; Returned</div><pre class="diag-col" id="diag-recv"></pre></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var modal = document.getElementById('diag-modal');
+  var elTitle = document.getElementById('diag-title'), elSub = document.getElementById('diag-sub');
+  var elSent = document.getElementById('diag-sent'), elRecv = document.getElementById('diag-recv');
+  function fmt(v) { return (v === null || v === undefined) ? '' : (typeof v === 'string' ? v : JSON.stringify(v, null, 2)); }
+  function open() { modal.style.display = 'flex'; }
+  function close() { modal.style.display = 'none'; }
+  modal.querySelector('.modal-close').addEventListener('click', close);
+  modal.querySelector('.modal-backdrop').addEventListener('click', close);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  document.getElementById('diag-copy').addEventListener('click', function () {
+    var txt = elTitle.textContent + '\n' + elSub.textContent + '\n\n=== SENT ===\n' + elSent.textContent + '\n\n=== RETURNED ===\n' + elRecv.textContent;
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(function(){ this.textContent='Copied!'; setTimeout(function(){document.getElementById('diag-copy').textContent='Copy';},1200); }.bind(this)).catch(function(){ window.prompt('Copy:', txt); });
+  });
+
+  function render(d) {
+    var ok = !!d.ok;
+    elTitle.textContent = 'Append diagnostic — result ' + (d.result_id || '');
+    var who = d.record ? ((d.record.FirstName||'') + ' ' + (d.record.LastName||'') + ' · ' + (d.record.City||'') + ', ' + (d.record.State||'') + ' ' + (d.record.ZipCode||'')) : '';
+    elSub.textContent = (d.timestamp || '') + '  ·  ' + who + '  ·  ' + (ok ? 'OK' : 'FAILED') + (d.logged ? '  ·  logged' : '');
+    var req = d.request || {};
+    elSent.textContent = (req.method || 'POST') + ' ' + (req.url || '') +
+      '\n\n── headers ──\n' + fmt(req.headers) +
+      '\n\n── payload ──\n' + fmt(req.body);
+    var resp = d.response;
+    if (resp) {
+      elRecv.textContent = 'HTTP ' + resp.status_code +
+        '\n\n── headers ──\n' + fmt(resp.headers) +
+        '\n\n── body ──\n' + fmt(resp.body);
+    } else {
+      elRecv.textContent = '(no response)\n\nerror: ' + (d.error || 'unknown');
+    }
+    elRecv.className = 'diag-col' + (ok ? '' : ' bad');
+  }
+
+  window.runDiag = function (rid) {
+    elTitle.textContent = 'Append diagnostic — result ' + rid;
+    elSub.textContent = 'Calling imdatacenter…';
+    elSent.textContent = ''; elRecv.textContent = ''; elRecv.className = 'diag-col';
+    open();
+    fetch('/append/diag/' + rid, { method: 'POST', headers: { 'X-Requested-With': 'fetch' } })
+      .then(function (r) { return r.json(); })
+      .then(render)
+      .catch(function (e) { elRecv.className = 'diag-col bad'; elRecv.textContent = 'request failed: ' + e; });
+  };
+
+  window.appendAll = function (firstRid) {
+    if (!confirm('Run phone + email append on ALL un-appended records? Each is a paid API call. The rest drain in the background; a sample call is shown here.')) return;
+    fetch('/append/all', { method: 'POST' }).catch(function () {});   // launch background drain
+    if (firstRid) { window.runDiag(firstRid); }
+    else { elTitle.textContent = 'Append all'; elSub.textContent = 'Draining started in the background.'; open(); }
+  };
+})();
+</script>
 {% endblock %}

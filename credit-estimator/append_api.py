@@ -138,3 +138,41 @@ def append_ex(first_name, last_name, address, city, state, zip_code, middle_name
     out.update(ok=True, email=parsed.get("email"),
                phones=parsed.get("phones") or [], status=parsed.get("status"))
     return out
+
+
+def append_debug(first_name, last_name, address, city, state, zip_code, middle_name=""):
+    """Full request/response capture for vendor troubleshooting. Returns
+    {"request": {method, url, headers, body}, "response": {status_code, headers,
+    body}|None, "ok": bool, "error": str|None, "parsed": {email, phones, status}}.
+    The API key IS included in request.headers — this is an internal debug view."""
+    payload = {
+        "address": {"address1": address or "", "address2": "",
+                    "city": city or "", "state": state or "", "zip": zip_code or ""},
+        "client_id": CLIENT_ID,
+        "name": {"first_name": first_name or "", "last_name": last_name or "",
+                 "middle_name": middle_name or "", "prefix_name": "", "suffix_name": ""},
+        "process": ["fp", "fe2"], "immediate": True}
+    hdrs = _headers()
+    out = {"request": {"method": "POST", "url": BASE_URL, "headers": dict(hdrs), "body": payload},
+           "response": None, "ok": False, "error": None, "parsed": None}
+    if not is_configured():
+        out["error"] = "append API not configured (missing IMDC_API_KEY / IMDC_CLIENT_ID)"
+        return out
+    try:
+        resp = requests.post(BASE_URL, json=payload, headers=hdrs, timeout=20)
+    except requests.RequestException as e:
+        out["error"] = str(e)[:500]
+        return out
+    try:
+        body = resp.json()
+    except ValueError:
+        body = resp.text
+    out["response"] = {"status_code": resp.status_code,
+                       "headers": dict(resp.headers), "body": body}
+    out["ok"] = 200 <= resp.status_code < 300
+    if out["ok"] and isinstance(body, dict):
+        try:
+            out["parsed"] = _parse(body)
+        except Exception:
+            pass
+    return out

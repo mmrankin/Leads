@@ -258,6 +258,41 @@ def append_one(result_id):
     return redirect(url_for("append_report"))
 
 
+@app.route("/append/diag/<int:result_id>", methods=["POST"])
+@require_login
+def append_diag(result_id):
+    """Run one append with full request/response capture (for the diagnostic
+    modal), and record it on success. Returns the raw exchange as JSON."""
+    if not _CP_SEND_OK:
+        return jsonify({"error": "credit modules failed to load"}), 500
+    from datetime import datetime as _dt
+    import append_api as _aa
+    ls, db = _cp_source.LINKED_SERVER, _cp_source.DB
+    r = _cp_source.dlr.one(
+        "SELECT FirstName, LastName, Address1, City, State, ZipCode "
+        "FROM [%s].[%s].[dbo].[vw_EquifaxConsumerRecordTriggers] WHERE result_id=%%(r)s" % (ls, db),
+        {"r": result_id}) or {}
+    dbg = _aa.append_debug(r.get("FirstName"), r.get("LastName"), r.get("Address1"),
+                           r.get("City"), r.get("State"), r.get("ZipCode"))
+    dbg["result_id"] = result_id
+    dbg["record"] = {k: r.get(k) for k in ("FirstName", "LastName", "Address1", "City", "State", "ZipCode")}
+    dbg["timestamp"] = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+    dbg["logged"] = False
+    try:
+        if dbg.get("ok") and dbg.get("parsed") and not pdb.get_append(result_id):
+            p = dbg["parsed"]
+            pdb.record_append(result_id, r.get("FirstName"), r.get("LastName"), r.get("Address1"),
+                              r.get("City"), r.get("State"), r.get("ZipCode"),
+                              p.get("email"), p.get("phones") or [], p.get("status"))
+            dbg["logged"] = True
+            pdb.resume_append_api()
+        elif not dbg.get("ok"):
+            pdb.pause_append_api()
+    except Exception as e:
+        dbg["log_error"] = str(e)[:200]
+    return jsonify(dbg)
+
+
 @app.route("/append/all", methods=["POST"])
 @require_login
 def append_all():
