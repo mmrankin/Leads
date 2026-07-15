@@ -172,7 +172,11 @@ def append_debug(first_name, last_name, address, city, state, zip_code, middle_n
     out["ok"] = 200 <= resp.status_code < 300
     if out["ok"] and isinstance(body, dict):
         try:
-            out["parsed"] = _parse(body)
-        except Exception:
-            pass
+            # The API queues immediate jobs; poll result_url to the completed
+            # result so the modal shows the actual returned data (and we log it).
+            completed = _await_complete(body)
+            out["response"]["body"] = completed
+            out["parsed"] = _parse(completed)
+        except Exception as e:
+            out["poll_error"] = str(e)[:200]
     return out
