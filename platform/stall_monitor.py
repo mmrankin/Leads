@@ -36,7 +36,7 @@ _started = False
 _lock = threading.Lock()
 
 
-def _kick_poller():
+def kick_poller():
     try:
         subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{POLLER_LABEL}"],
                        timeout=20, check=False,

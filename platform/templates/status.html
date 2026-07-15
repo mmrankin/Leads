@@ -45,6 +45,10 @@
     <div class="v {{ 'v-bad' if h.stalled else 'v-ok' }}">
       {{ h.mins_since_run if h.mins_since_run is not none else '—' }}<span style="font-size:14px"> min ago</span></div>
     <div class="s">{{ h.last_run or 'no run found in log' }}</div>
+    <form method="post" action="{{ url_for('poller_restart') }}" style="margin-top:8px"
+          onsubmit="return confirm('Restart the poller now? Its first pass rejects any unsent leads older than 30 min.')">
+      <button type="submit" class="btn btn--ghost" style="padding:4px 12px;font-size:12px">↻ Restart poller</button>
+    </form>
   </div>
   <div class="tile">
     <div class="k">Flow switch</div>

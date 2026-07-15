@@ -23,6 +23,7 @@ import leads_view
 import stats_view
 import health_view
 import append_view
+import stall_monitor
 
 # The Credit Pipeline send path (build ADF -> email -> store -> record in `sent`)
 # lives in the credit app and is shared with the poller. Import it so the admin's
@@ -51,7 +52,6 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 # Stall monitor: a daemon thread in this always-on web app watches poller health
 # and texts / self-heals on a stall (the launchd scheduler itself is unreliable).
 try:
-    import stall_monitor
     stall_monitor.start()
 except Exception as _sm_exc:  # never let the monitor block the admin app
     pass
@@ -201,6 +201,19 @@ def stats_leads():
 def status():
     """Dashboard: health of the automated Credit Pipeline send process."""
     return render_template("status.html", h=health_view.send_health(), on_status=True)
+
+
+@app.route("/poller-restart", methods=["POST"])
+@require_login
+def poller_restart():
+    """Manually restart (kickstart) the Credit Pipeline poller."""
+    try:
+        ok = stall_monitor.kick_poller()
+    except Exception:
+        ok = False
+    flash("Poller restart requested — it should run within a few seconds." if ok
+          else "Could not restart the poller.", "ok" if ok else "error")
+    return redirect(url_for("status"))
 
 
 @app.route("/append")
