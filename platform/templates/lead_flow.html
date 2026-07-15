@@ -69,6 +69,8 @@
       <div class="box">
         <div class="name">{{ s.name }}</div>
         {% if s.detail %}<div class="detail">{{ s.detail }}</div>{% endif %}
+        {# Action buttons only while the lead is unsent — a sent lead can't be
+           appended, rejected, or sent again. #}
         {% if loop.index in (4, 5) %}
         {% if run and run.run_ts %}
         <div class="detail" style="margin-top:5px;{{ 'color:#4fd1a5' if run.run_ok == '1' else 'color:#f08a89' }}">
@@ -77,19 +79,25 @@
           {% else %}API error {{ run.run_code }}{{ ': ' + run.run_err if run.run_err else '' }}{% endif %}
         </div>
         {% endif %}
+        {% if not flow.sent_at %}
         <form method="post" action="{{ url_for('lead_flow_append', result_id=flow.result_id) }}" style="margin-top:7px">
           <button type="submit" class="btn btn--ghost" style="padding:3px 11px;font-size:12px">↻ Run {{ 'phone' if loop.index == 4 else 'email' }} append</button>
         </form>
-        {% elif loop.index == 10 %}
+        {% endif %}
+        {% elif loop.index == 10 and not flow.sent_at %}
         <form method="post" action="{{ url_for('lead_flow_reject', result_id=flow.result_id) }}" style="margin-top:7px"
               onsubmit="return confirm('Reject (abandon) this lead? It will not be sent.')">
           <button type="submit" class="btn btn--ghost" style="padding:3px 11px;font-size:12px;color:#f08a89;border-color:#f08a89">Reject lead</button>
         </form>
         {% elif loop.index == 11 %}
+        {% if flow.sent_at %}
+        <div class="detail" style="margin-top:5px;color:#4fd1a5">Sent {{ flow.sent_at }} — this lead can't be sent again.</div>
+        {% else %}
         <form method="post" action="{{ url_for('lead_flow_send', result_id=flow.result_id) }}" style="margin-top:7px"
               onsubmit="return confirm('Send this lead to the dealer now?')">
           <button type="submit" class="btn" style="padding:3px 13px;font-size:12px">Send lead</button>
         </form>
+        {% endif %}
         {% endif %}
       </div>
     </div>

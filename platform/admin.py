@@ -828,6 +828,12 @@ def lead_flow_append(result_id):
     import append_api as _aa
     run = {}
     try:
+        sent = _cp_source.dlr.one(
+            "SELECT TOP 1 result_id FROM dlrPro.dbo.[sent] WHERE result_id=%(r)s",
+            {"r": result_id})
+        if sent:                                      # sent leads can't be (re)appended
+            flash(f"Lead #{result_id} was already sent — append is disabled.", "error")
+            return redirect(url_for("lead_flow", result_id=result_id))
         existing = pdb.get_append(result_id)
         if existing:                                  # already appended — show the logged result
             ph = [p for p in (existing.get("all_phones") or "").split("|") if p]
@@ -864,6 +870,12 @@ def lead_flow_append(result_id):
 def lead_flow_reject(result_id):
     """Reject (abandon) one lead so the poller won't send it (step 10)."""
     try:
+        sent = _cp_source.dlr.one(
+            "SELECT TOP 1 result_id FROM dlrPro.dbo.[sent] WHERE result_id=%(r)s",
+            {"r": result_id})
+        if sent:                                      # a sent lead can't be rejected
+            flash(f"Lead #{result_id} was already sent — it can't be rejected.", "error")
+            return redirect(url_for("lead_flow", result_id=result_id))
         _cp_source.reject_result(result_id)
         flash(f"Lead #{result_id} rejected.", "ok")
     except Exception as e:
