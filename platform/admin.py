@@ -267,7 +267,12 @@ def append_all():
     try:
         import subprocess
         drainer = os.path.join(CREDIT_DIR, "append_drainer.py")
-        subprocess.Popen([sys.executable, drainer], cwd=CREDIT_DIR,
+        # Use the shared venv python (has pymssql/requests) — the sibling of the
+        # credit app dir — not necessarily this process's interpreter.
+        venv_py = os.path.join(os.path.dirname(CREDIT_DIR), "dealer-leads", ".venv", "bin", "python")
+        python = os.environ.get("APPEND_PYTHON",
+                                venv_py if os.path.exists(venv_py) else sys.executable)
+        subprocess.Popen([python, drainer], cwd=CREDIT_DIR,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          start_new_session=True)
         flash("Append-all started — draining the backlog in the background. "
