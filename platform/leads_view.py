@@ -458,15 +458,39 @@ def _match_contact_sets(result_ids):
 _TRIG_CONTACT_CACHE = {}
 
 
-def _annotate_contact_flags(rows):
+def _annotate_contact_flags(rows, need_vehicle=True):
     """Set r['has_phone']/r['has_email'] and r['veh'] (year + make) per row.
 
     Phone/email follow the same waterfall as the Trigger Leads detail page and the
     poller — match_phone/match_email (by result_id) then the Equifax trigger view's
     own phone/email fields. tbl_ownership is NO LONGER consulted for contact; it is
     still used, and only, for the vehicle (the trigger rarely carries one). Batched
-    and cached per result_id."""
+    and cached per result_id.
+
+    need_vehicle=False skips the tbl_ownership vehicle lookup entirely — the single
+    slow part (a per-row ~340M-row seek, ~185 ms/key). It computes only has_phone/
+    has_email (fast trigger-view + match-table SQL) and leaves veh blank, without
+    populating the vehicle cache, so a later full load still fills the vehicle. Used
+    by the available-to-send COUNT, which never displays a vehicle."""
     if not rows:
+        return
+    if not need_vehicle:
+        need = [r for r in rows if r.get("result_id") not in _TRIG_CONTACT_CACHE]
+        pe = {}
+        if need:
+            rids = [r.get("result_id") for r in need]
+            tmap = _trigger_contact_map(rids)
+            m_em, m_ph = _match_contact_sets(rids)
+            for rid in rids:
+                t_em, t_ph = tmap.get(rid, (False, False))
+                pe[rid] = ((rid in m_em) or t_em, (rid in m_ph) or t_ph)
+        for r in rows:
+            rid = r.get("result_id")
+            if rid in _TRIG_CONTACT_CACHE:
+                r["has_email"], r["has_phone"], r["veh"] = _TRIG_CONTACT_CACHE[rid]
+            else:
+                em, ph = pe.get(rid, (False, False))
+                r["has_email"], r["has_phone"], r["veh"] = em, ph, ""
         return
     todo = [r for r in rows if r.get("result_id") not in _TRIG_CONTACT_CACHE]
     if todo:
@@ -507,7 +531,8 @@ def _lead_ids_for_results(result_ids):
 
 
 def trigger_leads(matching_customer=False, matching_dealer=False,
-                  matching_phone=False, cp_setup=False, sent_status="unsent", limit=200):
+                  matching_phone=False, cp_setup=False, sent_status="unsent", limit=200,
+                  need_vehicle=True):
     """The `limit` newest rows (by result_id, descending) from the CreditPipeline
     match_result feed joined to the ADF dealer and the sent ledger. Filters:
     matching_customer (Equifax consumer record found), matching_dealer
@@ -583,12 +608,15 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
         r["_fn"] = (r.get("cr_first") or r.get("eq_first") or payload.get("first_name") or "").strip()
         r["_addr"] = (payload.get("address_line_1") or "").strip()
         r["_zip"] = (r.get("consumer_zip") or payload.get("consumer_zip") or "").strip()
-    _annotate_contact_flags(rows)
+    # Phone/email flags first (fast trigger-view + match-table SQL). Apply the phone
+    # filter, and only THEN run the slow tbl_ownership vehicle lookup — so it pays
+    # the ~340M-row seek on just the rows we'll actually display, not the ones the
+    # phone filter is about to drop.
+    _annotate_contact_flags(rows, need_vehicle=False)
     if matching_phone:
-        # has_phone is only known after enrichment (trigger view / tbl_ownership /
-        # Equifax consumer tables), which runs on the already-sliced rows — so this
-        # keeps the phone-having rows among the newest `limit`.
         rows = [r for r in rows if r.get("has_phone")]
+    if need_vehicle:
+        _annotate_contact_flags(rows, need_vehicle=True)
     # Credit Pipeline set up for the row's dealer? = an active CREDIT_PIPELINE grant.
     grants = pdb.active_grants_by_dealer()
     lmap = _lead_ids_for_results([r.get("result_id") for r in rows])
@@ -603,7 +631,7 @@ def available_to_send_count():
     customer AND an ADF dealer AND with a phone number. Reuses trigger_leads (and
     its per-result_id enrichment cache), so it's cheap once the page has loaded."""
     return len(trigger_leads(matching_customer=True, matching_dealer=True,
-                             matching_phone=True, sent_status="unsent"))
+                             matching_phone=True, sent_status="unsent", need_vehicle=False))
 
 
 # ----- Trigger Funnel report (Equifax trigger -> matched -> enriched) -----
