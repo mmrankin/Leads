@@ -15,6 +15,18 @@ import dlrpro_db as dlr
 LINKED_SERVER = "10.1.4.8"
 CP_DB = "CreditPipeline"
 
+# "Not yet appended" = no SUCCESSFUL append: either the append API was never
+# called (no log row) OR it was called but returned no phone/email (a log row
+# with both blank). The latter has a `created` timestamp, surfaced as
+# `last_attempt` — a never-attempted record's last_attempt is NULL. Aggregated
+# per result_id (`got` = 1 when any log row carried a phone or email) so a record
+# with several log rows still yields one row and its most-recent attempt time.
+_APPEND_AGG = (
+    "(SELECT result_id, MAX(created) AS last_attempt, "
+    "   MAX(CASE WHEN NULLIF(LTRIM(RTRIM(all_phones)),'') IS NOT NULL "
+    "             OR NULLIF(LTRIM(RTRIM(email_appended)),'') IS NOT NULL THEN 1 ELSE 0 END) AS got "
+    " FROM dlrPro.dbo.credit_append_log GROUP BY result_id) al")
+
 _UNAPPENDED_SQL = (
     "SELECT TOP {limit} v.result_id, v.FirstName, v.LastName, v.City, v.State, v.ZipCode, "
     "d.dealer_name, "
@@ -22,23 +34,26 @@ _UNAPPENDED_SQL = (
     "     WHEN dp.paused = 1 THEN 'P' "
     "     WHEN (dp.valid_from IS NULL OR dp.valid_from <= CONVERT(date,GETDATE())) "
     "          AND (dp.valid_to IS NULL OR dp.valid_to >= CONVERT(date,GETDATE())) THEN 'Y' "
-    "     ELSE '-' END AS cp_status "
+    "     ELSE '-' END AS cp_status, "
+    "CONVERT(varchar(19), al.last_attempt, 120) AS last_attempt "
     "FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecordTriggers] v "
-    "LEFT JOIN dlrPro.dbo.credit_append_log al ON al.result_id = v.result_id "
+    "LEFT JOIN " + _APPEND_AGG + " ON al.result_id = v.result_id "
     "LEFT JOIN dlrPro.dbo.dealers d ON d.dealer_id = v.dealercode "
     "LEFT JOIN dlrPro.dbo.dealer_products dp ON dp.dealer_id = d.dealer_id "
     "  AND dp.product_code = 'CREDIT_PIPELINE' "
-    "WHERE al.result_id IS NULL ORDER BY v.result_id DESC")
+    "WHERE al.result_id IS NULL OR al.got = 0 "
+    "ORDER BY v.result_id DESC")
 
 
 def unappended(limit=300):
-    """Trigger-view records with no append-log entry yet (newest first), plus the
-    total count. Returns (rows, total)."""
+    """Trigger-view records not yet successfully appended (newest first), plus the
+    total count. Includes records the append API was tried on but returned nothing
+    (their `last_attempt` timestamp is set). Returns (rows, total)."""
     try:
-        total = dlr.one(
+        total = dlr.one((
             "SELECT COUNT(*) c FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecordTriggers] v "
-            "LEFT JOIN dlrPro.dbo.credit_append_log al ON al.result_id=v.result_id "
-            "WHERE al.result_id IS NULL".format(ls=LINKED_SERVER, db=CP_DB))["c"]
+            "LEFT JOIN " + _APPEND_AGG + " ON al.result_id=v.result_id "
+            "WHERE al.result_id IS NULL OR al.got = 0").format(ls=LINKED_SERVER, db=CP_DB))["c"]
         rows = dlr.query(_UNAPPENDED_SQL.format(limit=int(limit), ls=LINKED_SERVER, db=CP_DB))
     except Exception:
         return [], 0
@@ -51,6 +66,7 @@ def unappended(limit=300):
             "zip": r.get("ZipCode") or "",
             "dealer": r.get("dealer_name") or "—",
             "cp": (r.get("cp_status") or "-").strip(),
+            "last_attempt": r.get("last_attempt"),
         })
     return out, int(total)
 
