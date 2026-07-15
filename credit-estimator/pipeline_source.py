@@ -52,6 +52,7 @@ MAX_NO_CONTACT_ATTEMPTS = 3
 _ACTIVE_GRANT_COND = (
     "AND EXISTS (SELECT 1 FROM dlrPro.dbo.dealer_products dp "
     "WHERE dp.dealer_id = d.dealer_id AND dp.product_code = 'CREDIT_PIPELINE' "
+    "AND (dp.paused IS NULL OR dp.paused = 0) "        # paused dealers get no auto sends
     "AND (dp.valid_from IS NULL OR dp.valid_from <= CONVERT(date, GETDATE())) "
     "AND (dp.valid_to   IS NULL OR dp.valid_to   >= CONVERT(date, GETDATE())))")
 

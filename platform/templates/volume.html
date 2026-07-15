@@ -47,7 +47,7 @@
         <tr>
             <td>{{ r.dealer_name }}</td>
             <td class="muted">{{ r.dealer_id }}</td>
-            <td>{% if r.cp_setup %}<span style="color:#4fd1a5;font-weight:600">Y</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td>{% if r.cp_paused %}<span style="color:#e0a83e;font-weight:700" title="Paused">P</span>{% elif r.cp_setup %}<span style="color:#4fd1a5;font-weight:600">Y</span>{% else %}<span class="muted">—</span>{% endif %}</td>
             <td class="num">{% if r.last_month %}<a href="{{ url_for('dealer_leads', dealer_id=r.dealer_id, period='last_month') }}">{{ r.last_month }}</a>{% else %}{{ r.last_month }}{% endif %}</td>
             <td class="num">{% if r.this_month %}<a href="{{ url_for('dealer_leads', dealer_id=r.dealer_id, period='this_month') }}">{{ r.this_month }}</a>{% else %}{{ r.this_month }}{% endif %}</td>
             <td class="num">{% if r.yesterday %}<a href="{{ url_for('dealer_leads', dealer_id=r.dealer_id, period='yesterday') }}">{{ r.yesterday }}</a>{% else %}{{ r.yesterday }}{% endif %}</td>

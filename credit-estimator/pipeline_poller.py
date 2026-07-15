@@ -126,6 +126,8 @@ def eligible(row):
     no customer_record, from the matched_payload). Returns (ok, reason)."""
     if not pdb.dealer_has_product(row.get("dealer_id"), pdb.PRODUCT_CREDIT_PIPELINE):
         return False, "no active CREDIT_PIPELINE grant"
+    if pdb.dealer_cp_paused(row.get("dealer_id")):
+        return False, "dealer paused"
     c = resolve_contact(row)
     if not c["last_name"] and not c["first_name"]:
         return False, "no customer name (record or payload)"
@@ -233,11 +235,13 @@ def run(dry_run=False):
     today = date.today()
     days_left = calendar.monthrange(today.year, today.month)[1] - today.day + 1
 
+    interval = pdb.get_pipeline_interval()   # min minutes between sends to a dealer
     counts = {}
     month_sent = {}   # dealers.id -> Credit Pipeline leads already sent this month
     today_sent = {}   # dealers.id -> Credit Pipeline leads already sent today
     daily_cap = {}    # dealers.id -> today's paced allowance
     max_cap = {}      # dealer_id  -> monthly cap
+    last_sent_min = {}  # dealers.id -> minutes since last send (seeded from DB, 0 after a send this run)
     for row in rows:
         ok, reason = eligible(row)
         if not ok:
@@ -276,6 +280,16 @@ def run(dry_run=False):
                      row["result_id"], dcode, today_sent[did], daily_cap[did], month_sent[did], cap)
             continue
 
+        # Send spacing: at most one send per dealer per `interval` minutes.
+        if did not in last_sent_min:
+            last_sent_min[did] = pdb.dealer_last_sent_min(did)
+        lm = last_sent_min[did]
+        if lm is not None and lm < interval:
+            counts["spacing"] = counts.get("spacing", 0) + 1
+            LOG.info("result %s (%s) -> skipped: spacing (last send %d min ago < %d min)",
+                     row["result_id"], dcode, lm, interval)
+            continue
+
         if dry_run:
             counts["dry_run"] = counts.get("dry_run", 0) + 1
             LOG.info("result %s -> would send to %s <%s> (%d/%d today; %d/%d month)",
@@ -283,12 +297,14 @@ def run(dry_run=False):
                      today_sent[did] + 1, daily_cap[did], month_sent[did] + 1, cap)
             month_sent[did] += 1
             today_sent[did] += 1
+            last_sent_min[did] = 0
             continue
         status, detail, lead_id = send_lead(row, require_phone=True)
         counts[status] = counts.get(status, 0) + 1
         if status not in ("skipped_no_dealer", "skipped_no_contact"):   # a send was recorded
             month_sent[did] += 1
             today_sent[did] += 1
+            last_sent_min[did] = 0
         LOG.info("result %s -> %s (lead %s) %s", row["result_id"], status, lead_id, detail)
 
     LOG.info("Run complete (%s). Fetched %d: %s",

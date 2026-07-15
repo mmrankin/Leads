@@ -61,7 +61,7 @@
         <tbody>
         {% for g in grants %}
         <tr>
-            <td>{{ g.product_code }}</td>
+            <td>{{ g.product_code }}{% if g.paused %} <span style="color:#e0a83e;font-weight:700" title="Paused — grant kept, no sends">PAUSED</span>{% endif %}</td>
             <td>
                 {% if g.url %}
                 <a href="{{ g.url }}" target="_blank" rel="noopener">Open ↗</a>
@@ -73,8 +73,15 @@
             <td>{{ '%.2f'|format(g.monthly_price) if g.monthly_price is not none else '—' }}</td>
             <td>{{ '%.2f'|format(g.per_lead_price) if g.per_lead_price is not none else '—' }}</td>
             <td>{{ g.max_leads_per_month if g.max_leads_per_month is not none else '10' }}</td>
-            <td>
-                <form method="post" action="{{ url_for('remove_grant', grant_id=g.id) }}" onsubmit="return confirm('Remove this grant?')">
+            <td class="nowrap">
+                <form method="post" action="{{ url_for('dealer_pause') }}" style="display:inline">
+                    <input type="hidden" name="dealer_id" value="{{ dealer.dealer_id }}">
+                    <input type="hidden" name="product_code" value="{{ g.product_code }}">
+                    <input type="hidden" name="paused" value="{{ '0' if g.paused else '1' }}">
+                    <button class="link-btn" type="submit" style="color:var(--amber)">{{ 'resume' if g.paused else 'pause' }}</button>
+                </form>
+                &nbsp;·&nbsp;
+                <form method="post" action="{{ url_for('remove_grant', grant_id=g.id) }}" style="display:inline" onsubmit="return confirm('Remove this grant?')">
                     <input type="hidden" name="dealer_id" value="{{ dealer.dealer_id }}">
                     <button class="link-btn" type="submit">remove</button>
                 </form>

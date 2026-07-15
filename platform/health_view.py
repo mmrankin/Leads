@@ -62,10 +62,18 @@ def send_health():
     """Dict of health metrics for the Status dashboard."""
     h = {"stall_threshold": STALL_MINUTES}
 
-    last_run, mins = last_poller_run()
-    h["last_run"] = last_run.strftime("%Y-%m-%d %H:%M") if last_run else None
+    # Poller liveness: prefer the DB heartbeat (stamped at each run start); fall
+    # back to the log's last 'Run complete'.
+    mins = _q(pdb.pipeline_heartbeat_age_minutes)
+    if mins is None:
+        last_run, mins = last_poller_run()
+        h["last_run"] = last_run.strftime("%Y-%m-%d %H:%M") if last_run else None
+    else:
+        hb = _q(lambda: pdb.get_setting(pdb.PIPELINE_HEARTBEAT_KEY))
+        h["last_run"] = (hb[:16].replace("T", " ") + " UTC") if hb else None
     h["mins_since_run"] = int(round(mins)) if mins is not None else None
     h["flow_on"] = bool(_q(pdb.get_pipeline_flow, False))
+    h["interval_min"] = _q(pdb.get_pipeline_interval, 5)
     # Stalled = flow is ON but the poller hasn't checked in within the window.
     h["stalled"] = h["flow_on"] and (mins is None or mins > STALL_MINUTES)
 
@@ -115,13 +123,13 @@ def send_health():
         "CONVERT(varchar(19),MAX(s.created),120) AS last_received, "
         "DATEDIFF(minute,MAX(s.created),GETDATE()) AS mins_ago, "
         "SUM(CASE WHEN CONVERT(date,s.created)=CONVERT(date,GETDATE()) THEN 1 ELSE 0 END) AS today, "
-        "dp.max_leads_per_month AS cap "
+        "dp.max_leads_per_month AS cap, dp.paused AS paused "
         "FROM dlrPro.dbo.dealer_products dp "
         "JOIN dlrPro.dbo.dealers d ON d.dealer_id=dp.dealer_id "
         "LEFT JOIN dlrPro.dbo.[sent] s ON s.dealer_id=d.id "
         "WHERE dp.product_code='CREDIT_PIPELINE' "
         "AND (dp.valid_from IS NULL OR dp.valid_from<=CONVERT(date,GETDATE())) "
         "AND (dp.valid_to IS NULL OR dp.valid_to>=CONVERT(date,GETDATE())) "
-        "GROUP BY d.dealer_id, d.dealer_name, dp.max_leads_per_month "
+        "GROUP BY d.dealer_id, d.dealer_name, dp.max_leads_per_month, dp.paused "
         "ORDER BY d.dealer_name"), []) or []
     return h

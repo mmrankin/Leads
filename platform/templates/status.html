@@ -80,17 +80,31 @@
   </div>
 </div>
 
+<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap">
+  <div>
+    <h2 style="margin-bottom:4px">Send interval</h2>
+    <p class="subtitle" style="margin:0">Minimum minutes the poller waits between automated sends to the <strong>same dealer</strong> (1–30). Currently <strong>{{ h.interval_min }} min</strong>.</p>
+  </div>
+  <form method="post" action="{{ url_for('pipeline_interval') }}" style="display:flex;gap:8px;align-items:center">
+    <input type="number" name="interval_min" min="1" max="30" step="1" value="{{ h.interval_min }}"
+           style="width:80px" required>
+    <span class="muted">min</span>
+    <button type="submit" class="btn">Save</button>
+  </form>
+</div>
+
 <div class="card">
   <h2>Active dealers — last received</h2>
   {% if h.dealers %}
   <div style="overflow-x:auto">
   <table class="tbl nowrap">
-    <thead><tr><th>Dealer</th><th>Code</th><th>Today</th><th>Max/mo</th><th>Last received</th><th>Ago</th></tr></thead>
+    <thead><tr><th>Dealer</th><th>Code</th><th>CP</th><th>Today</th><th>Max/mo</th><th>Last received</th><th>Ago</th></tr></thead>
     <tbody>
       {% for d in h.dealers %}
       <tr>
         <td>{{ d.dealer_name }}</td>
         <td>{{ d.dealer_id }}</td>
+        <td>{% if d.paused %}<span class="pill pill-warn">P</span>{% else %}<span class="v-ok">Y</span>{% endif %}</td>
         <td>{{ d.today or 0 }}</td>
         <td>{{ d.cap if d.cap is not none else '—' }}</td>
         <td>{{ d.last_received or '—' }}</td>

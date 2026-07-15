@@ -19,7 +19,7 @@
             <td>{{ d.city or '' }}{{ ', ' + d.state if d.state else '' }}</td>
             <td>{{ d.lead_email_address }}</td>
             {% for label, tip, code in product_cols %}
-            <td class="pcol">{% if code in grants.get(d.dealer_id, []) %}<span class="on" title="{{ tip }}">✓</span>{% else %}<span class="off">–</span>{% endif %}</td>
+            <td class="pcol">{% if code in grants.get(d.dealer_id, []) %}{% if code in paused.get(d.dealer_id, []) %}<span class="paused" title="{{ tip }} — PAUSED">P</span>{% else %}<span class="on" title="{{ tip }}">✓</span>{% endif %}{% else %}<span class="off">–</span>{% endif %}</td>
             {% endfor %}
             <td><a href="{{ url_for('dealer', dealer_id=d.dealer_id) }}">manage →</a></td>
         </tr>
@@ -30,6 +30,7 @@
         .tbl th.pcol, .tbl td.pcol { text-align: center; width: 3rem; }
         .tbl td.pcol .on { color: #1d9e75; font-weight: 700; }
         .tbl td.pcol .off { color: #556; }
+        .tbl td.pcol .paused { color: #e0a83e; font-weight: 700; }
     </style>
     {% else %}
     <p class="subtitle">No dealers yet. Add one under <b>Dealers → Add</b>.</p>

@@ -172,6 +172,7 @@ def dealers_list():
         dealers=pdb.list_dealers(),
         product_cols=DEALER_PRODUCT_COLS,
         grants=pdb.active_grants_by_dealer(),
+        paused=pdb.paused_by_dealer(),
         on_dealers_list=True,
     )
 
@@ -209,6 +210,31 @@ def pipeline_flow():
     pdb.set_pipeline_flow(enable)
     flash(f"Credit Pipeline lead flow turned {'ON' if enable else 'OFF'}.", "ok")
     return redirect(url_for("trigger_leads"))
+
+
+@app.route("/pipeline-interval", methods=["POST"])
+@require_login
+def pipeline_interval():
+    """Set the send interval (minutes between automated sends to a dealer, 1–30)."""
+    try:
+        n = int(request.form.get("interval_min") or 5)
+    except ValueError:
+        n = 5
+    pdb.set_pipeline_interval(n)
+    flash(f"Send interval set to {pdb.get_pipeline_interval()} min between sends to a dealer.", "ok")
+    return redirect(url_for("status"))
+
+
+@app.route("/dealer/pause", methods=["POST"])
+@require_login
+def dealer_pause():
+    """Pause/resume a dealer's grant (keeps the product; stops sends)."""
+    dealer_id = request.form.get("dealer_id")
+    product_code = request.form.get("product_code") or pdb.PRODUCT_CREDIT_PIPELINE
+    paused = request.form.get("paused") == "1"
+    pdb.set_dealer_paused(dealer_id, product_code, paused)
+    flash(f"{product_code} {'paused' if paused else 'resumed'} for this dealer.", "ok")
+    return redirect(url_for("dealer", dealer_id=dealer_id))
 
 
 @app.route("/products")

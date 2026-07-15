@@ -53,6 +53,7 @@ def pipeline_volume():
     days_in_month = calendar.monthrange(today.year, today.month)[1]
     dom = today.day
     grants = pdb.active_grants_by_dealer()   # dealer_id -> set(product_code)
+    paused = pdb.paused_by_dealer()          # dealer_id -> set(paused product_code)
     for r in rows:
         mx = r.get("max_leads_per_month")
         mx = int(mx) if mx is not None else _DEFAULT_MAX_LEADS
@@ -63,6 +64,7 @@ def pipeline_volume():
         r["last_sent"] = (r.get("last_sent") or "")[:16] or None   # YYYY-MM-DD HH:MM, or None
         r["needed"] = max(0, mx - this_month)   # more leads to reach the monthly max
         r["cp_setup"] = pdb.PRODUCT_CREDIT_PIPELINE in grants.get(r.get("dealer_id"), set())
+        r["cp_paused"] = pdb.PRODUCT_CREDIT_PIPELINE in paused.get(r.get("dealer_id"), set())
     return rows
 
 

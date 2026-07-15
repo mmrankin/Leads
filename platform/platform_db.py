@@ -49,6 +49,10 @@ def init_db():
     # Per-grant monthly lead cap (Credit Pipeline); NULL -> DEFAULT_MAX_LEADS_PER_MONTH.
     dlr.execute("IF COL_LENGTH('dealer_products', 'max_leads_per_month') IS NULL "
                 "ALTER TABLE dealer_products ADD max_leads_per_month INT NULL")
+    # Pause a grant without removing it: paused dealers keep the product but get
+    # no automated (or manual) sends, and show 'P' on CP reports.
+    dlr.execute("IF COL_LENGTH('dealer_products', 'paused') IS NULL "
+                "ALTER TABLE dealer_products ADD paused BIT NOT NULL DEFAULT 0")
     for code, name, desc, source in DEFAULT_PRODUCTS:
         p = {"c": code, "n": name, "d": desc, "s": source}
         if dlr.one("SELECT 1 AS x FROM products WHERE product_code=%(c)s", p):
@@ -528,6 +532,55 @@ def get_pipeline_flow():
 
 def set_pipeline_flow(enabled):
     set_setting(PIPELINE_FLOW_KEY, "1" if enabled else "0")
+
+
+# ----- Send interval (per-dealer spacing) -----
+PIPELINE_INTERVAL_KEY = "pipeline_interval_min"
+
+
+def get_pipeline_interval():
+    """Minutes the poller waits between automated sends to the SAME dealer
+    (spacing), clamped 1–30. Default 5."""
+    try:
+        n = int(get_setting(PIPELINE_INTERVAL_KEY, "5"))
+    except (TypeError, ValueError):
+        n = 5
+    return max(1, min(30, n))
+
+
+def set_pipeline_interval(minutes):
+    set_setting(PIPELINE_INTERVAL_KEY, str(max(1, min(30, int(minutes)))))
+
+
+def dealer_last_sent_min(dealers_id):
+    """Minutes since the last Credit Pipeline send to this dealer (dealers.id),
+    or None if never — for the per-dealer send-spacing interval."""
+    row = dlr.one("SELECT DATEDIFF(minute, MAX(created), GETDATE()) AS m "
+                  "FROM dbo.sent WHERE dealer_id=%(d)s", {"d": int(dealers_id)})
+    return int(row["m"]) if row and row.get("m") is not None else None
+
+
+# ----- Pause a dealer's grant (keep the product, stop sends) -----
+def set_dealer_paused(dealer_id, product_code, paused):
+    dlr.execute(f"UPDATE dealer_products SET paused=%(p)s, updated_at={NOW} "
+                "WHERE dealer_id=%(d)s AND product_code=%(c)s",
+                {"p": 1 if paused else 0, "d": dealer_id, "c": product_code})
+
+
+def dealer_cp_paused(dealer_id):
+    """True if the dealer's Credit Pipeline grant is paused (grant kept, sends off)."""
+    row = dlr.one("SELECT paused FROM dealer_products "
+                  "WHERE dealer_id=%(d)s AND product_code=%(c)s",
+                  {"d": dealer_id, "c": PRODUCT_CREDIT_PIPELINE})
+    return bool(row and row.get("paused"))
+
+
+def paused_by_dealer():
+    """{dealer_id: set(product_code)} of PAUSED grants — renders 'P' on reports."""
+    out = {}
+    for r in dlr.query("SELECT dealer_id, product_code FROM dealer_products WHERE paused=1"):
+        out.setdefault(r["dealer_id"], set()).add(r["product_code"])
+    return out
 
 
 # ----- Poller heartbeat (watchdog) -----
