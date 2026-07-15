@@ -11,6 +11,7 @@ import calendar
 from datetime import date
 
 import dlrpro_db as dlr
+import platform_db as pdb
 
 LINKED_SERVER = "10.1.4.8"
 CP_DB = "CreditPipeline"
@@ -29,13 +30,14 @@ _APPEND_AGG = (
 
 _UNAPPENDED_SQL = (
     "SELECT TOP {limit} v.result_id, v.FirstName, v.LastName, v.City, v.State, v.ZipCode, "
-    "d.dealer_name, "
+    "v.dealercode, d.dealer_name, "
     "CASE WHEN dp.dealer_id IS NULL THEN '-' "
     "     WHEN dp.paused = 1 THEN 'P' "
     "     WHEN (dp.valid_from IS NULL OR dp.valid_from <= CONVERT(date,GETDATE())) "
     "          AND (dp.valid_to IS NULL OR dp.valid_to >= CONVERT(date,GETDATE())) THEN 'Y' "
     "     ELSE '-' END AS cp_status, "
-    "CONVERT(varchar(19), al.last_attempt, 120) AS last_attempt "
+    # yy-mm-dd hh:mi (drop the century digits + the seconds)
+    "SUBSTRING(CONVERT(varchar(16), al.last_attempt, 120), 3, 14) AS last_attempt "
     "FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecordTriggers] v "
     "LEFT JOIN " + _APPEND_AGG + " ON al.result_id = v.result_id "
     "LEFT JOIN dlrPro.dbo.dealers d ON d.dealer_id = v.dealercode "
@@ -64,11 +66,44 @@ def unappended(limit=300):
             "name": " ".join(x for x in (r.get("FirstName"), r.get("LastName")) if x) or "—",
             "location": ", ".join(x for x in (r.get("City"), r.get("State")) if x) or "—",
             "zip": r.get("ZipCode") or "",
+            "dealer_code": (r.get("dealercode") or "").strip(),
             "dealer": r.get("dealer_name") or "—",
             "cp": (r.get("cp_status") or "-").strip(),
             "last_attempt": r.get("last_attempt"),
         })
+    _annotate_capping(out)
     return out, int(total)
+
+
+def _annotate_capping(rows):
+    """Per row, attach needed_today (the dealer's paced daily allowance — the same
+    daily cap the poller enforces: remaining-this-month / days-left, ceil), sent_today,
+    and over_cap (sent_today > needed_today). Only for rows whose dealer is on Credit
+    Pipeline (cp == 'Y'); others get needed_today = None. One lookup per distinct
+    dealer, not per row."""
+    today = date.today()
+    days_left = calendar.monthrange(today.year, today.month)[1] - today.day + 1
+    codes = {r["dealer_code"] for r in rows if r.get("cp") == "Y" and r.get("dealer_code")}
+    cap = {}
+    for code in codes:
+        try:
+            d = pdb.get_dealer(code)
+            if not d:
+                continue
+            did = d["id"]
+            mx = pdb.pipeline_max_leads(code) or 0
+            before_today = (pdb.sent_this_month(did) or 0) - (pdb.sent_today(did) or 0)
+            needed = max(0, -(-(mx - before_today) // days_left)) if days_left else 0
+            cap[code] = (needed, pdb.sent_today(did) or 0)
+        except Exception:                            # never break the report over a cap calc
+            continue
+    for r in rows:
+        code = r.get("dealer_code")
+        if r.get("cp") == "Y" and code in cap:
+            needed, sent = cap[code]
+            r["needed_today"], r["sent_today"], r["over_cap"] = needed, sent, sent > needed
+        else:
+            r["needed_today"], r["sent_today"], r["over_cap"] = None, None, False
 
 
 _APPENDED_SQL = (
