@@ -664,6 +664,64 @@ def trigger_detail(result_id):
     return render_template("trigger_detail.html", d=detail, dealer=dealer)
 
 
+@app.route("/lead-flow/<int:result_id>/append", methods=["POST"])
+@require_login
+def lead_flow_append(result_id):
+    """Run the imdatacenter phone+email append for one lead (steps 4 & 5)."""
+    if not _CP_SEND_OK:
+        flash("Append unavailable — credit modules failed to load.", "error")
+        return redirect(url_for("lead_flow", result_id=result_id))
+    try:
+        import json as _json, pipeline_enrich as _pe
+        LS, DB = _cp_source.LINKED_SERVER, _cp_source.DB
+        row = _cp_source.dlr.one(
+            "SELECT CAST(matched_payload AS NVARCHAR(MAX)) AS mp, consumer_zip "
+            "FROM [%s].[%s].[dbo].[match_result] WHERE result_id=%%(r)s" % (LS, DB),
+            {"r": result_id}) or {}
+        p = _json.loads(row.get("mp") or "{}") or {}
+        lead = {"first_name": p.get("first_name"), "last_name": p.get("last_name"),
+                "address": p.get("address_line_1"), "city": p.get("city"),
+                "state": p.get("state"), "zip": p.get("consumer_zip") or row.get("consumer_zip")}
+        email, phones = _pe._append_contact(result_id, lead)
+        flash("Append ran — %d phone(s), email: %s." % (len(phones or []), email or "none"), "ok")
+    except Exception as e:
+        flash("Append failed: %s" % str(e)[:140], "error")
+    return redirect(url_for("lead_flow", result_id=result_id))
+
+
+@app.route("/lead-flow/<int:result_id>/reject", methods=["POST"])
+@require_login
+def lead_flow_reject(result_id):
+    """Reject (abandon) one lead so the poller won't send it (step 10)."""
+    try:
+        _cp_source.reject_result(result_id)
+        flash(f"Lead #{result_id} rejected.", "ok")
+    except Exception as e:
+        flash("Reject failed: %s" % str(e)[:140], "error")
+    return redirect(url_for("lead_flow", result_id=result_id))
+
+
+@app.route("/lead-flow/<int:result_id>/send", methods=["POST"])
+@require_login
+def lead_flow_send(result_id):
+    """Send one lead to its dealer (step 11) — same process as the poller."""
+    if not _CP_SEND_OK:
+        flash("Send unavailable — credit modules failed to load.", "error")
+        return redirect(url_for("lead_flow", result_id=result_id))
+    row = _cp_source.fetch_one(result_id)
+    if not row:
+        flash(f"Result #{result_id} can't be sent (no matched dealer, or already sent).", "error")
+        return redirect(url_for("lead_flow", result_id=result_id))
+    ok, reason = _cp_eligible(row)
+    if not ok:
+        flash(f"Not sent — {reason}.", "error")
+        return redirect(url_for("lead_flow", result_id=result_id))
+    status, detail, lead_id = _cp_send_lead(row)
+    ok_send = status in ("sent", "pending")
+    flash(f"Result #{result_id}: {status} — {detail}", "ok" if ok_send else "error")
+    return redirect(url_for("lead_flow", result_id=result_id))
+
+
 @app.route("/lead-flow/<int:result_id>")
 @require_login
 def lead_flow(result_id):

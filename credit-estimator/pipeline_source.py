@@ -299,6 +299,15 @@ def reject_stale_unsent(minutes=REJECT_AFTER_MINUTES):
     return done
 
 
+def reject_result(result_id):
+    """Mark one match_result row as rejected (abandoned) — remote UPDATE via
+    EXEC(...) AT (a 4-part-name UPDATE would need MSDTC)."""
+    remote = ("UPDATE %s.dbo.match_result SET rejected = 1 WHERE result_id = %d"
+              % (DB, int(result_id)))
+    _exec_autocommit("EXEC (%s) AT [" + LINKED_SERVER + "]", (remote,))
+    return True
+
+
 def fetch_unsent(limit=1000):
     """Matched, not-yet-sent trigger-lead rows for dealers CURRENTLY on the
     CREDIT_PIPELINE product, excluding records that already hit the no-contact retry
