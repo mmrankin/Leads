@@ -123,7 +123,8 @@ def send_health():
         b = cur_hour - timedelta(hours=i)
         cnt = hr_map.get((b.year, b.month, b.day, b.hour), 0)
         hmax = max(hmax, cnt)
-        buckets.append({"label": b.strftime("%-I%p").lower(), "hour24": b.strftime("%H"), "count": cnt})
+        buckets.append({"label": b.strftime("%-I%p").lower(), "hour24": b.strftime("%H"),
+                        "date": b.strftime("%Y-%m-%d"), "count": cnt})
     h["sent_by_hour"] = buckets
     h["sent_by_hour_max"] = hmax
     h["sent_24h"] = sum(b["count"] for b in buckets)

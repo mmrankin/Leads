@@ -17,6 +17,8 @@
   a.tile-link { text-decoration:none; color:inherit; display:block; transition:border-color .12s; }
   a.tile-link:hover { border-color:var(--accent); }
   .v-bad { color:#f08a89; } .v-ok { color:#4fd1a5; } .v-warn { color:#e0a83e; }
+  svg a .hbar { cursor:pointer; transition:fill .1s; }
+  svg a:hover .hbar { fill:#6cb0f0; }
   .pill { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; }
   .pill-on { background:rgba(29,158,117,.16); color:#4fd1a5; }
   .pill-off{ background:rgba(226,75,74,.16); color:#f08a89; }
@@ -98,7 +100,7 @@
     {% for b in h.sent_by_hour %}
       {% set x = left + loop.index0 * gw %}
       {% set bh = (b.count / mx * H)|round(1) %}
-      {% if b.count %}<rect x="{{ (x+1)|round(1) }}" y="{{ base - bh }}" width="{{ (gw-3)|round(1) }}" height="{{ bh }}" rx="2" fill="#378add"><title>{{ b.label }}: {{ b.count }} sent</title></rect>{% endif %}
+      {% if b.count %}<a href="{{ url_for('leads') }}?start={{ b.date }}&end={{ b.date }}"><rect class="hbar" x="{{ (x+1)|round(1) }}" y="{{ base - bh }}" width="{{ (gw-3)|round(1) }}" height="{{ bh }}" rx="2" fill="#378add"><title>{{ b.label }} on {{ b.date }}: {{ b.count }} sent — click for that day's leads</title></rect></a>{% endif %}
       {% if loop.index0 % 3 == 0 %}<text x="{{ (x + gw/2)|round(1) }}" y="{{ base+14 }}" text-anchor="middle" fill="#6b7585" font-size="9">{{ b.hour24 }}</text>{% endif %}
     {% endfor %}
   </svg>

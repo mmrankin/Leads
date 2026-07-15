@@ -4,11 +4,19 @@
 <h1>Sent</h1>
 <div class="card">
     <div class="tabs">
-        <a class="tab {{ 'is-active' if not product else '' }}" href="{{ url_for('leads') }}">All</a>
-        <a class="tab {{ 'is-active' if product == 'LEAD_FORM' else '' }}" href="{{ url_for('leads', product='LEAD_FORM') }}">Lead Form</a>
-        <a class="tab {{ 'is-active' if product == 'TRADE_IN' else '' }}" href="{{ url_for('leads', product='TRADE_IN') }}">Trade-In</a>
-        <a class="tab {{ 'is-active' if product == 'CREDIT_EST' else '' }}" href="{{ url_for('leads', product='CREDIT_EST') }}">Credit</a>
+        <a class="tab {{ 'is-active' if not product else '' }}" href="{{ url_for('leads', start=date_from, end=date_to) }}">All</a>
+        <a class="tab {{ 'is-active' if product == 'LEAD_FORM' else '' }}" href="{{ url_for('leads', product='LEAD_FORM', start=date_from, end=date_to) }}">Lead Form</a>
+        <a class="tab {{ 'is-active' if product == 'TRADE_IN' else '' }}" href="{{ url_for('leads', product='TRADE_IN', start=date_from, end=date_to) }}">Trade-In</a>
+        <a class="tab {{ 'is-active' if product == 'CREDIT_EST' else '' }}" href="{{ url_for('leads', product='CREDIT_EST', start=date_from, end=date_to) }}">Credit</a>
     </div>
+    <form method="get" action="{{ url_for('leads') }}" class="row" style="align-items:flex-end;gap:12px;margin-bottom:8px">
+        {% if product %}<input type="hidden" name="product" value="{{ product }}">{% endif %}
+        <div class="field" style="margin:0"><label>From</label><input type="date" name="start" value="{{ date_from }}"></div>
+        <div class="field" style="margin:0"><label>To</label><input type="date" name="end" value="{{ date_to }}"></div>
+        <button type="submit" class="btn">Apply</button>
+        {% if date_from or date_to %}<a class="btn btn--ghost" href="{{ url_for('leads', product=product) }}">Clear</a>{% endif %}
+        <span class="muted" style="margin-left:auto">{{ leads|length }} lead{{ '' if leads|length == 1 else 's' }}{% if date_from or date_to %} · {{ date_from or '…' }} → {{ date_to or '…' }}{% endif %}</span>
+    </form>
     {{ leads_table(leads, dealers, show_dealer=True) }}
 </div>
 {% endblock %}

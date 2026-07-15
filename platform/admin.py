@@ -502,15 +502,25 @@ def dealer(dealer_id):
 @require_login
 def leads():
     product = request.args.get("product")
+    date_from = (request.args.get("start") or "").strip()[:10]
+    date_to = (request.args.get("end") or "").strip()[:10]
+    # When date-filtering, pull a wider window before filtering (created_at is a
+    # 'YYYY-MM-DD HH:MM:SS' string, so a lexical [:10] compare is a date compare).
+    limit = 5000 if (date_from or date_to) else 300
     if product == "LEAD_FORM":
-        rows = leads_view.lead_form_leads()
+        rows = leads_view.lead_form_leads(limit=limit)
     elif product == "TRADE_IN":
-        rows = leads_view.trade_leads()
+        rows = leads_view.trade_leads(limit=limit)
     elif product == "CREDIT_EST":
-        rows = leads_view.credit_leads()
+        rows = leads_view.credit_leads(limit=limit)
     else:
-        rows = leads_view.all_leads()
+        rows = leads_view.all_leads(limit=limit)
+    if date_from:
+        rows = [r for r in rows if (r.get("created_at") or "")[:10] >= date_from]
+    if date_to:
+        rows = [r for r in rows if (r.get("created_at") or "")[:10] <= date_to]
     return render_template("leads.html", leads=rows, product=product,
+                           date_from=date_from, date_to=date_to,
                            dealers={d["dealer_id"]: d["dealer_name"] for d in pdb.list_dealers()})
 
 
