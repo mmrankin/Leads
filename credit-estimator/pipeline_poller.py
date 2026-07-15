@@ -225,6 +225,12 @@ def run(dry_run=False):
     if not dry_run:
         n_ph, n_em = pipeline_source.populate_match_tables()
         LOG.info("Ownership match: +%d phone, +%d email into match tables.", n_ph, n_em)
+        # Phone+email append for EVERY trigger-view record (not just the ones we
+        # send): drain a batch of un-appended records each cycle so coverage is
+        # complete. Honors the append circuit breaker.
+        n_ap = pipeline_enrich.append_from_view()
+        if n_ap:
+            LOG.info("Append-from-view: %d append call(s) this cycle.", n_ap)
     rows = pipeline_source.fetch_unsent(limit=BATCH)
     if not rows:
         LOG.info("No matched, unsent trigger leads.")

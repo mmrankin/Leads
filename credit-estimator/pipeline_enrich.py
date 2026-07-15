@@ -369,6 +369,55 @@ def _append_contact(result_id, lead):
     return email, phones
 
 
+# How many un-appended view records to append per poller cycle (0 disables the
+# view-wide append). The name/address come straight from the trigger view.
+APPEND_VIEW_BATCH = int(os.environ.get("CREDITPIPELINE_APPEND_VIEW_BATCH", "40"))
+APPEND_VIEW_WORKERS = int(os.environ.get("CREDITPIPELINE_APPEND_VIEW_WORKERS", "5"))
+
+_APPEND_VIEW_SQL = (
+    "SELECT TOP %d v.result_id, v.FirstName, v.LastName, v.Address1, v.City, v.State, v.ZipCode "
+    "FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecordTriggers] v "
+    "LEFT JOIN dlrPro.dbo.credit_append_log al ON al.result_id = v.result_id "
+    "WHERE al.result_id IS NULL ORDER BY v.result_id DESC")
+
+
+def append_from_view(limit=None, workers=None):
+    """Ensure a phone+email append call for EVERY record in the Equifax trigger
+    view: append each view row not yet in credit_append_log, once (name/address
+    from the view itself). Bounded per call and honors the circuit breaker, so
+    the backlog drains over cycles and stays covered going forward. Returns the
+    number of appends attempted. Records skipped during a cooldown stay unlogged
+    and get retried on a later cycle."""
+    limit = APPEND_VIEW_BATCH if limit is None else limit
+    workers = APPEND_VIEW_WORKERS if workers is None else workers
+    if limit <= 0 or not append_api.is_configured() or pdb.append_api_paused():
+        return 0
+    try:
+        rows = dlr.query((_APPEND_VIEW_SQL % int(limit)).format(ls=LINKED_SERVER, db=CP_DB))
+    except Exception as e:
+        LOG.warning("append_from_view fetch failed: %s", e)
+        return 0
+
+    def _do(r):
+        if pdb.append_api_paused():                  # breaker tripped mid-batch — stop
+            return 0
+        lead = {"first_name": r.get("FirstName"), "last_name": r.get("LastName"),
+                "address": r.get("Address1"), "city": r.get("City"),
+                "state": r.get("State"), "zip": r.get("ZipCode")}
+        try:
+            _append_contact(r.get("result_id"), lead)
+            return 1
+        except Exception as e:
+            LOG.warning("append_from_view failed for result %s: %s", r.get("result_id"), e)
+            return 0
+
+    if workers and workers > 1:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            return sum(ex.map(_do, rows))
+    return sum(_do(r) for r in rows)
+
+
 def enrich_lead(lead, result_id=None, consumer_id=None):
     """Enrich `lead` in place:
 
