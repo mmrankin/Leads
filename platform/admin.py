@@ -231,7 +231,8 @@ def append_report():
 def lead_map():
     """Map of where leads originated (by consumer state), over a date range."""
     return render_template("map.html",
-                           m=map_view.leads_map(request.args.get("start"), request.args.get("end")),
+                           m=map_view.leads_map(request.args.get("start"), request.args.get("end"),
+                                                request.args.get("mode")),
                            on_map=True)
 
 

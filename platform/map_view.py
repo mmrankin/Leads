@@ -31,11 +31,22 @@ STATE_GRID = {
 GRID_ROWS = 8
 GRID_COLS = 11
 
-_STATE_SQL = (
+# Matched records: all trigger leads by consumer state (filtered by arrival).
+_MATCHED_SQL = (
     "SELECT JSON_VALUE(CAST(matched_payload AS NVARCHAR(MAX)), '$.state') AS st, COUNT(*) AS c "
     "FROM [{ls}].[{db}].[dbo].[match_result] "
     "WHERE returned_at >= %(start)s AND returned_at < %(end)s "
     "GROUP BY JSON_VALUE(CAST(matched_payload AS NVARCHAR(MAX)), '$.state')"
+).format(ls=LINKED_SERVER, db=DB)
+
+# Delivered leads: only leads actually sent (in dbo.sent), by consumer state
+# (filtered by send date).
+_DELIVERED_SQL = (
+    "SELECT JSON_VALUE(CAST(m.matched_payload AS NVARCHAR(MAX)), '$.state') AS st, COUNT(*) AS c "
+    "FROM dbo.sent s "
+    "JOIN [{ls}].[{db}].[dbo].[match_result] m ON m.result_id = s.result_id "
+    "WHERE s.created >= %(start)s AND s.created < %(end)s "
+    "GROUP BY JSON_VALUE(CAST(m.matched_payload AS NVARCHAR(MAX)), '$.state')"
 ).format(ls=LINKED_SERVER, db=DB)
 
 
@@ -48,9 +59,11 @@ def _parse(d, default):
         return default
 
 
-def leads_map(start=None, end=None):
+def leads_map(start=None, end=None, mode=None):
     """Lead counts by state over [start, end], laid out on the tile grid.
-    Range is clamped to at most one year (default: last 90 days)."""
+    mode='delivered' counts only sent leads; anything else counts all matched
+    records. Range is clamped to at most one year (default: last 90 days)."""
+    mode = "delivered" if mode == "delivered" else "matched"
     today = date.today()
     end_d = _parse(end, today)
     start_d = _parse(start, end_d - timedelta(days=90))
@@ -60,9 +73,10 @@ def leads_map(start=None, end=None):
         start_d = end_d - timedelta(days=MAX_RANGE_DAYS)
 
     counts = {}
+    sql = _DELIVERED_SQL if mode == "delivered" else _MATCHED_SQL
     try:
-        for r in dlr.query(_STATE_SQL, {"start": start_d.isoformat(),
-                                        "end": (end_d + timedelta(days=1)).isoformat()}):
+        for r in dlr.query(sql, {"start": start_d.isoformat(),
+                                 "end": (end_d + timedelta(days=1)).isoformat()}):
             st = (r.get("st") or "").strip().upper()
             if st in STATE_GRID:
                 counts[st] = counts.get(st, 0) + int(r.get("c") or 0)
@@ -83,5 +97,6 @@ def leads_map(start=None, end=None):
                               ("6 months", 182), ("1 year", 365))]
     return {"cells": cells, "max_count": max_count, "total": sum(counts.values()),
             "by_state": by_state, "states_hit": len(counts),
-            "rows": GRID_ROWS, "cols": GRID_COLS, "presets": presets,
+            "rows": GRID_ROWS, "cols": GRID_COLS, "presets": presets, "mode": mode,
+            "unit": "delivered leads" if mode == "delivered" else "matched records",
             "start": start_d.isoformat(), "end": end_d.isoformat()}

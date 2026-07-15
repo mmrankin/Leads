@@ -26,43 +26,30 @@
                 <a class="nav-item {{ 'active' if on_status else '' }}" href="{{ url_for('status') }}">
                     <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                     <span>Send Status</span></a>
-                <a class="nav-item {{ 'active' if on_append else '' }}" href="{{ url_for('append_report') }}">
-                    <svg viewBox="0 0 24 24"><path d="M3 3v18h18M18 17V9M13 17V5M8 17v-3"/></svg>
-                    <span>Append</span></a>
-                <a class="nav-item {{ 'active' if on_map else '' }}" href="{{ url_for('lead_map') }}">
-                    <svg viewBox="0 0 24 24"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4zM8 2v16M16 6v16"/></svg>
-                    <span>Lead Map</span></a>
-                <div class="nav-parent {{ 'open' if on_dealers_add or on_dealers_list else '' }}">
-                    <svg class="ic" viewBox="0 0 24 24"><path d="M3 21h18M4 21V8l8-5 8 5v13M9 21v-6h6v6"/></svg>
-                    <span>Dealers</span>
-                    <svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
-                </div>
-                <div class="nav-sub {{ 'open' if on_dealers_add or on_dealers_list else '' }}">
-                    <a class="nav-item {{ 'active' if on_dealers_add else '' }}" href="{{ url_for('dealers_add') }}">
-                        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-                        <span>Add</span></a>
-                    <a class="nav-item {{ 'active' if on_dealers_list else '' }}" href="{{ url_for('dealers_list') }}">
-                        <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
-                        <span>List</span></a>
-                </div>
-                <div class="nav-parent {{ 'open' if on_leads or on_triggers or on_volume or on_funnel else '' }}">
+                <a class="nav-item {{ 'active' if on_triggers else '' }}" href="{{ url_for('trigger_leads') }}">
+                    <svg viewBox="0 0 24 24"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
+                    <span>Trigger Leads</span></a>
+                <div class="nav-parent {{ 'open' if on_leads or on_volume or on_funnel or on_append or on_map else '' }}">
                     <svg class="ic" viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 9h16M9 9v11"/></svg>
-                    <span>Leads</span>
+                    <span>Reports</span>
                     <svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
                 </div>
-                <div class="nav-sub {{ 'open' if on_leads or on_triggers or on_volume or on_funnel else '' }}">
+                <div class="nav-sub {{ 'open' if on_leads or on_volume or on_funnel or on_append or on_map else '' }}">
                     <a class="nav-item {{ 'active' if on_leads else '' }}" href="{{ url_for('leads') }}">
                         <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
                         <span>Sent</span></a>
-                    <a class="nav-item {{ 'active' if on_triggers else '' }}" href="{{ url_for('trigger_leads') }}">
-                        <svg viewBox="0 0 24 24"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
-                        <span>Trigger Leads</span></a>
                     <a class="nav-item {{ 'active' if on_volume else '' }}" href="{{ url_for('lead_volume') }}">
                         <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
                         <span>Volume</span></a>
                     <a class="nav-item {{ 'active' if on_funnel else '' }}" href="{{ url_for('trigger_funnel') }}">
                         <svg viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>
                         <span>Funnel</span></a>
+                    <a class="nav-item {{ 'active' if on_append else '' }}" href="{{ url_for('append_report') }}">
+                        <svg viewBox="0 0 24 24"><path d="M3 3v18h18M18 17V9M13 17V5M8 17v-3"/></svg>
+                        <span>Append</span></a>
+                    <a class="nav-item {{ 'active' if on_map else '' }}" href="{{ url_for('lead_map') }}">
+                        <svg viewBox="0 0 24 24"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4zM8 2v16M16 6v16"/></svg>
+                        <span>Lead Map</span></a>
                 </div>
                 <div class="nav-parent {{ 'open' if on_stats_program or on_stats_leads or on_buckets else '' }}">
                     <svg class="ic" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
@@ -80,12 +67,18 @@
                         <svg viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
                         <span>Buckets</span></a>
                 </div>
-                <div class="nav-parent {{ 'open' if on_products or on_crm or on_sources or on_subsources or on_bcc else '' }}">
+                <div class="nav-parent {{ 'open' if on_dealers_add or on_dealers_list or on_products or on_crm or on_sources or on_subsources or on_bcc else '' }}">
                     <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
                     <span>Admin</span>
                     <svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
                 </div>
-                <div class="nav-sub {{ 'open' if on_products or on_crm or on_sources or on_subsources or on_bcc else '' }}">
+                <div class="nav-sub {{ 'open' if on_dealers_add or on_dealers_list or on_products or on_crm or on_sources or on_subsources or on_bcc else '' }}">
+                    <a class="nav-item {{ 'active' if on_dealers_add else '' }}" href="{{ url_for('dealers_add') }}">
+                        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                        <span>Add Dealer</span></a>
+                    <a class="nav-item {{ 'active' if on_dealers_list else '' }}" href="{{ url_for('dealers_list') }}">
+                        <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+                        <span>Dealer List</span></a>
                     <a class="nav-item {{ 'active' if on_products else '' }}" href="{{ url_for('products') }}">
                         <svg viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4 8 4 8-4zM4 7v10l8 4 8-4V7M12 11v10"/></svg>
                         <span>Products</span></a>

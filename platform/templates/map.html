@@ -7,6 +7,10 @@
   .mp-preset { padding:6px 12px; border:1px solid var(--line); border-radius:8px; text-decoration:none;
                color:var(--muted); font-size:13px; font-weight:600; }
   .mp-preset:hover { border-color:var(--accent); color:var(--txt); }
+  .mp-preset.sel { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .mp-toggle { display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; }
+  .mp-toggle a { padding:8px 16px; text-decoration:none; color:var(--muted); font-size:13.5px; font-weight:600; }
+  .mp-toggle a.on { background:var(--accent); color:#fff; }
   .mp-tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; margin:6px 0 18px; }
   .mp-tile { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
   .mp-tile .k { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
@@ -15,30 +19,35 @@
 </style>
 
 <h1>Lead Origin Map</h1>
-<p class="subtitle">Where trigger leads came from, by consumer state. Choose a date range (up to 1 year).</p>
+<p class="subtitle">Where leads came from, by consumer state. Toggle between matched records and delivered leads, and choose a date range (up to 1 year).</p>
 
 <div class="card">
+  <div class="mp-toggle" style="margin-bottom:14px">
+    <a class="{{ 'on' if m.mode != 'delivered' else '' }}" href="{{ url_for('lead_map') }}?mode=matched&start={{ m.start }}&end={{ m.end }}">Matched records</a>
+    <a class="{{ 'on' if m.mode == 'delivered' else '' }}" href="{{ url_for('lead_map') }}?mode=delivered&start={{ m.start }}&end={{ m.end }}">Delivered leads</a>
+  </div>
   <form method="get" action="{{ url_for('lead_map') }}" class="mp-controls">
+    <input type="hidden" name="mode" value="{{ m.mode }}">
     <div class="field" style="margin:0"><label>From</label><input type="date" name="start" value="{{ m.start }}"></div>
     <div class="field" style="margin:0"><label>To</label><input type="date" name="end" value="{{ m.end }}"></div>
     <button type="submit" class="btn">Apply</button>
     <div class="mp-presets" style="margin-left:auto">
       {% for p in m.presets %}
-      <a class="mp-preset" href="{{ url_for('lead_map') }}?start={{ p.start }}&end={{ p.end }}">Last {{ p.label }}</a>
+      <a class="mp-preset" href="{{ url_for('lead_map') }}?mode={{ m.mode }}&start={{ p.start }}&end={{ p.end }}">Last {{ p.label }}</a>
       {% endfor %}
     </div>
   </form>
 </div>
 
 <div class="mp-tiles">
-  <div class="mp-tile"><div class="k">Total leads</div><div class="v">{{ '{:,}'.format(m.total) }}</div></div>
+  <div class="mp-tile"><div class="k">Total {{ m.unit }}</div><div class="v">{{ '{:,}'.format(m.total) }}</div></div>
   <div class="mp-tile"><div class="k">States</div><div class="v">{{ m.states_hit }}</div></div>
   <div class="mp-tile"><div class="k">Top state</div><div class="v">{% if m.by_state %}{{ m.by_state[0].state }} <span style="font-size:15px;color:var(--muted)">({{ '{:,}'.format(m.by_state[0].count) }})</span>{% else %}—{% endif %}</div></div>
   <div class="mp-tile"><div class="k">Range</div><div class="v" style="font-size:15px;margin-top:8px">{{ m.start }} → {{ m.end }}</div></div>
 </div>
 
 <div class="card">
-  <h2>Leads by state</h2>
+  <h2>{{ m.unit|title }} by state</h2>
   <div class="map-wrap">
   {% set sz = 52 %}
   <svg viewBox="0 0 {{ m.cols*sz }} {{ m.rows*sz }}" style="width:100%;max-width:720px;height:auto" xmlns="http://www.w3.org/2000/svg">
