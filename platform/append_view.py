@@ -16,9 +16,18 @@ LINKED_SERVER = "10.1.4.8"
 CP_DB = "CreditPipeline"
 
 _UNAPPENDED_SQL = (
-    "SELECT TOP {limit} v.result_id, v.FirstName, v.LastName, v.Address1, v.City, v.State, v.ZipCode "
+    "SELECT TOP {limit} v.result_id, v.FirstName, v.LastName, v.City, v.State, v.ZipCode, "
+    "d.dealer_name, "
+    "CASE WHEN dp.dealer_id IS NULL THEN '-' "
+    "     WHEN dp.paused = 1 THEN 'P' "
+    "     WHEN (dp.valid_from IS NULL OR dp.valid_from <= CONVERT(date,GETDATE())) "
+    "          AND (dp.valid_to IS NULL OR dp.valid_to >= CONVERT(date,GETDATE())) THEN 'Y' "
+    "     ELSE '-' END AS cp_status "
     "FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecordTriggers] v "
     "LEFT JOIN dlrPro.dbo.credit_append_log al ON al.result_id = v.result_id "
+    "LEFT JOIN dlrPro.dbo.dealers d ON d.dealer_id = v.dealercode "
+    "LEFT JOIN dlrPro.dbo.dealer_products dp ON dp.dealer_id = d.dealer_id "
+    "  AND dp.product_code = 'CREDIT_PIPELINE' "
     "WHERE al.result_id IS NULL ORDER BY v.result_id DESC")
 
 
@@ -40,6 +49,8 @@ def unappended(limit=300):
             "name": " ".join(x for x in (r.get("FirstName"), r.get("LastName")) if x) or "—",
             "location": ", ".join(x for x in (r.get("City"), r.get("State")) if x) or "—",
             "zip": r.get("ZipCode") or "",
+            "dealer": r.get("dealer_name") or "—",
+            "cp": (r.get("cp_status") or "-").strip(),
         })
     return out, int(total)
 
