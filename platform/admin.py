@@ -25,6 +25,7 @@ import health_view
 import append_view
 import map_view
 import stall_monitor
+import tunnel_monitor
 
 # The Credit Pipeline send path (build ADF -> email -> store -> record in `sent`)
 # lives in the credit app and is shared with the poller. Import it so the admin's
@@ -55,6 +56,15 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 try:
     stall_monitor.start()
 except Exception as _sm_exc:  # never let the monitor block the admin app
+    pass
+
+# Tunnel monitor: same pattern — watches the Cloudflare tunnel (cloudflared) and
+# restarts it + texts the on-call number if it dies (e.g. a cloudflared
+# self-update killed it). Alerts over Twilio directly, so a dead tunnel can't
+# silence its own alarm.
+try:
+    tunnel_monitor.start()
+except Exception as _tm_exc:
     pass
 
 
