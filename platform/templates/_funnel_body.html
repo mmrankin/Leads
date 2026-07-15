@@ -21,11 +21,12 @@
         </tr></thead>
         <tbody>
         {% for label, n, enriched in stages %}
+        {% set has = n is not none %}
         <tr>
             <td class="lbl">{{ label }}{% if enriched %} <span class="muted" title="Includes data appended from the ownership + Equifax consumer databases">*</span>{% endif %}</td>
-            <td class="num">{{ n }}</td>
-            <td class="num muted">{{ (100 * n / total) | round(0, 'floor') | int }}%</td>
-            <td class="barcell"><span class="fbar {{ 'dim' if enriched else '' }}" style="width:{{ (100 * n / total) | round(1) }}%"></span></td>
+            <td class="num">{{ n if has else '—' }}</td>
+            <td class="num muted">{{ (100 * n / total) | round(0, 'floor') | int ~ '%' if has else '—' }}</td>
+            <td class="barcell"><span class="fbar {{ 'dim' if enriched else '' }}" style="width:{{ (100 * n / total) | round(1) if has else 0 }}%"></span></td>
         </tr>
         {% endfor %}
         </tbody>

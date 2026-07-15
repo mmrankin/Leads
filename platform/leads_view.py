@@ -671,11 +671,49 @@ def _funnel_window_start(window):
     return today.replace(day=1)
 
 
+# Vehicle coverage for the funnel = how many triggers have a tbl_ownership match.
+# EXISTENCE-ONLY and SET-BASED (one EXISTS per key, no ORDER BY last_seen, no
+# per-row fallback), chunked so the VALUES list stays bounded. This is the whole
+# reason the page hung: the old path enriched every row via a correlated TOP-1
+# seek WITH an ORDER BY (~185 ms/key → ~15 min for a full month, past the request
+# timeout, so the spinner never resolved). Existence needs no sort and lets SQL
+# short-circuit → a full month's ~5k keys count in ~10s. Primary match only
+# (exact zip + last_name LIKE first-5 + address1 LIKE first-8) — the Trigger Leads
+# report's extra last+first+zip4 fallback is skipped here for speed, so this is a
+# hair conservative vs. that per-row VEH flag. None on error/timeout (bar shows —).
+_FUNNEL_VEH_CHUNK = 2000
+_FUNNEL_VEH_CACHE = {}   # window start -> (row_count, has_vehicle)
+
+
+def _funnel_vehicle_count(rows):
+    """Count of `rows` (keyed by _ln/_addr/_zip) with any tbl_ownership vehicle
+    match. None if a chunk errors/times out."""
+    esc = lambda s: s.replace("'", "''")               # noqa: E731
+    keys = [(r.get("_ln") or "", r.get("_addr") or "", r.get("_zip") or "") for r in rows]
+    keys = [k for k in keys if k[0] and k[1] and k[2]]
+    if not keys:
+        return 0
+    total = 0
+    for i in range(0, len(keys), _FUNNEL_VEH_CHUNK):
+        values = ",".join("('%s','%s','%s')" % (esc(a), esc(b), esc(c))
+                          for a, b, c in keys[i:i + _FUNNEL_VEH_CHUNK])
+        sql = ("SELECT COUNT(*) AS hits FROM (VALUES " + values + ") k(ln, ad, z) "
+               "WHERE EXISTS (SELECT 1 FROM panafax..tbl_ownership WITH (NOLOCK) "
+               "  WHERE zip = CAST(k.z AS varchar(20)) "
+               "    AND last_name LIKE LEFT(CAST(k.ln AS varchar(100)), 5) + '%' "
+               "    AND address1 LIKE LEFT(CAST(k.ad AS varchar(200)), 8) + '%')")
+        try:
+            total += int(dlr.query(sql, timeout=90)[0]["hits"])
+        except Exception:
+            return None
+    return total
+
+
 def pipeline_funnel(window="month"):
     """Trigger-pipeline funnel counts over the window. total/matched/score/estimate
     AND phone/email are exact single-pass SQL counts straight from the Equifax
-    trigger view (no tbl_ownership / Equifax-consumer-table appends). Only vehicle
-    still uses the tbl_ownership enrichment (the trigger has no vehicle)."""
+    trigger view. Vehicle is a fast set-based tbl_ownership existence count (the
+    trigger has no vehicle); None if that lookup degrades."""
     start = _funnel_window_start(window).isoformat()
     try:
         agg = dlr.query(_FUNNEL_AGG_SQL, {"start": start}, timeout=120)[0]
@@ -691,10 +729,18 @@ def pipeline_funnel(window="month"):
         except (ValueError, TypeError):
             payload = {}
         r["_ln"] = (r.get("cr_last") or payload.get("last_name") or "").strip()
-        r["_fn"] = (r.get("cr_first") or payload.get("first_name") or "").strip()
         r["_addr"] = (payload.get("address_line_1") or "").strip()
         r["_zip"] = (r.get("consumer_zip") or payload.get("consumer_zip") or "").strip()
-    _annotate_contact_flags(rows)
+
+    n = len(rows)
+    cached = _FUNNEL_VEH_CACHE.get(start)
+    if cached and cached[0] == n:
+        has_vehicle = cached[1]
+    else:
+        has_vehicle = _funnel_vehicle_count(rows)
+        if has_vehicle is not None:
+            _FUNNEL_VEH_CACHE[start] = (n, has_vehicle)
+
     return {
         "window": window,
         "start": start,
@@ -702,7 +748,7 @@ def pipeline_funnel(window="month"):
         "matched_dealer": int(agg.get("matched_dealer") or 0),
         "has_phone": int(agg.get("has_phone") or 0),   # trigger view only
         "has_email": int(agg.get("has_email") or 0),   # trigger view only
-        "has_vehicle": sum(1 for r in rows if (r.get("veh") or "").strip()),
+        "has_vehicle": has_vehicle,                    # None if the lookup degraded
         "has_score": int(agg.get("has_score") or 0),
         "has_estimate": int(agg.get("has_estimate") or 0),
     }
