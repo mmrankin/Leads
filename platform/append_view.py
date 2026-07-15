@@ -13,7 +13,7 @@ from datetime import date
 import dlrpro_db as dlr
 
 MONTHS_BACK = 3          # selector goes back this many months
-APPEND_UNIT_COST = 0.015  # $ per phone match + $ per email match
+APPEND_UNIT_COST = 0.025  # $ per phone match + $ per email match (cost estimate)
 
 _HAS_PHONE = "all_phones IS NOT NULL AND all_phones<>''"
 _HAS_EMAIL = "email_appended IS NOT NULL AND email_appended<>''"
@@ -99,4 +99,4 @@ def append_stats(month=None):
 
     return {"selected": "%04d-%02d" % (sy, sm), "selected_label": sel_start.strftime("%B %Y"),
             "months": months, "by_day": by_day, "by_month": by_month,
-            "summary": summary, "chart_max": chart_max}
+            "summary": summary, "chart_max": chart_max, "unit_cost": APPEND_UNIT_COST}
