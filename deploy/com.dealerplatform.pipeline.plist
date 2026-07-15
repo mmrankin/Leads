@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Runs the Credit Pipeline lead poller every 5 minutes as a user LaunchAgent.
-     Copy to ~/Library/LaunchAgents/ and `launchctl load` it.
-     Each run: reject stale unsent leads, enrich contact from tbl_ownership into
-     match_phone/match_email, then send (newest-first). The 5-minute cadence gives
-     the ownership match time to complete before the send it gates.
-     launchd will not start a second copy while one is still running, so runs
-     never overlap. The poller checks the global flow switch (platform admin) and
-     exits immediately when it is OFF, so it is cheap to leave loaded. -->
+<!-- Runs the Credit Pipeline lead poller as a persistent user LaunchAgent.
+     run_poller.sh is a supervised loop: it runs the poller once per minute in a
+     fresh python process, forever. KeepAlive=true means launchd relaunches the
+     script if it ever exits (crash, kill, logout/login, reboot) — so the send
+     schedule no longer depends on launchd's StartInterval timer, which stalled
+     unreliably on this host and silently killed the send about once an hour.
+     Each tick is time-capped inside run_poller.sh so a stuck run can't freeze the
+     loop. The poller checks the global flow switch (platform admin) and exits
+     immediately when it is OFF, so it is cheap to leave running. -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
@@ -15,10 +16,12 @@
     <array>
         <string>/Users/markrankin/claude/credit-estimator/run_poller.sh</string>
     </array>
-    <key>StartInterval</key>
-    <integer>300</integer>
+    <key>KeepAlive</key>
+    <true/>
     <key>RunAtLoad</key>
     <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
     <key>StandardOutPath</key>
     <string>/Users/markrankin/claude/deploy/pipeline.out.log</string>
     <key>StandardErrorPath</key>
