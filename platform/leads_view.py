@@ -181,7 +181,7 @@ def credit_leads(dealer_id=None, limit=300):
             "product": "CREDIT_EST", "id": r.get("id"), "dealer_id": r.get("dealer_id"),
             "name": _name(r), "email": r.get("email"), "phone": r.get("phone"),
             "vehicle": _vehicle(r), "value": value, "stage": r.get("stage"),
-            "email_status": email_status,
+            "email_status": email_status, "result_id": r.get("result_id"),
             "verdict": r.get("email_verdict"), "created_at": r.get("created_at"),
         })
     return out

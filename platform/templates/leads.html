@@ -33,7 +33,9 @@
     {% for l in rows %}
     {% set pinfo = plabels.get(l.product, ('lead', 'Lead Form')) %}
     <tr>
-        <td class="nowrap">{{ l.created_at[:16] if l.created_at else '' }}</td>
+        <td class="nowrap">{{ l.created_at[:16] if l.created_at else '' }}
+            {% if l.result_id %}<br><a href="{{ url_for('lead_flow', result_id=l.result_id) }}"
+               style="font-size:12px" title="Where this lead is in the process">Flow &rarr;</a>{% endif %}</td>
         <td><span class="pill pill--{{ pinfo[0] }}">{{ pinfo[1] }}</span></td>
         {% if show_dealer %}<td>{{ dealers.get(l.dealer_id, l.dealer_id) }}</td>{% endif %}
         <td><a href="{{ url_for('lead_detail', product=l.product, lead_id=l.id) }}">{{ l.name }}</a></td>
