@@ -51,11 +51,11 @@
     <div class="v">{% if h.flow_on %}<span class="pill pill-on">ON</span>{% else %}<span class="pill pill-off">OFF</span>{% endif %}</div>
     <div class="s">Master automated-send toggle</div>
   </div>
-  <div class="tile">
-    <div class="k">Delivered today</div>
+  <a class="tile tile-link" href="{{ url_for('leads') }}">
+    <div class="k">Delivered today →</div>
     <div class="v">{{ h.sent_today if h.sent_today is not none else '—' }}</div>
     <div class="s">{{ h.sent_last_hour if h.sent_last_hour is not none else '—' }} in the last hour</div>
-  </div>
+  </a>
   <div class="tile">
     <div class="k">Last delivery</div>
     <div class="v" style="font-size:16px;margin-top:8px">{{ h.last_sent or '—' }}</div>
