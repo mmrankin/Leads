@@ -14,6 +14,8 @@
   .tile .k { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
   .tile .v { font-size:26px; font-weight:700; margin-top:4px; line-height:1.1; }
   .tile .s { color:var(--muted); font-size:12px; margin-top:3px; }
+  a.tile-link { text-decoration:none; color:inherit; display:block; transition:border-color .12s; }
+  a.tile-link:hover { border-color:var(--accent); }
   .v-bad { color:#f08a89; } .v-ok { color:#4fd1a5; } .v-warn { color:#e0a83e; }
   .pill { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; }
   .pill-on { background:rgba(29,158,117,.16); color:#4fd1a5; }
@@ -59,11 +61,11 @@
     <div class="v" style="font-size:16px;margin-top:8px">{{ h.last_sent or '—' }}</div>
     <div class="s">{{ h.sent_total if h.sent_total is not none else '—' }} sent all-time</div>
   </div>
-  <div class="tile">
-    <div class="k">Backlog (unsent, not rejected)</div>
+  <a class="tile tile-link" href="{{ url_for('trigger_leads') }}">
+    <div class="k">Backlog (unsent, not rejected) →</div>
     <div class="v {{ 'v-warn' if h.backlog and h.backlog > 50 else '' }}">{{ h.backlog if h.backlog is not none else '—' }}</div>
     <div class="s">oldest {{ h.backlog_oldest_min if h.backlog_oldest_min is not none else '—' }} min · {{ h.feed_today if h.feed_today is not none else '—' }} new triggers today</div>
-  </div>
+  </a>
   <div class="tile">
     <div class="k">Append API (imdatacenter)</div>
     <div class="v" style="font-size:16px;margin-top:8px">
