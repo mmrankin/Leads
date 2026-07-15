@@ -12,6 +12,37 @@ from datetime import date
 
 import dlrpro_db as dlr
 
+LINKED_SERVER = "10.1.4.8"
+CP_DB = "CreditPipeline"
+
+_UNAPPENDED_SQL = (
+    "SELECT TOP {limit} v.result_id, v.FirstName, v.LastName, v.Address1, v.City, v.State, v.ZipCode "
+    "FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecordTriggers] v "
+    "LEFT JOIN dlrPro.dbo.credit_append_log al ON al.result_id = v.result_id "
+    "WHERE al.result_id IS NULL ORDER BY v.result_id DESC")
+
+
+def unappended(limit=300):
+    """Trigger-view records with no append-log entry yet (newest first), plus the
+    total count. Returns (rows, total)."""
+    try:
+        total = dlr.one(
+            "SELECT COUNT(*) c FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecordTriggers] v "
+            "LEFT JOIN dlrPro.dbo.credit_append_log al ON al.result_id=v.result_id "
+            "WHERE al.result_id IS NULL".format(ls=LINKED_SERVER, db=CP_DB))["c"]
+        rows = dlr.query(_UNAPPENDED_SQL.format(limit=int(limit), ls=LINKED_SERVER, db=CP_DB))
+    except Exception:
+        return [], 0
+    out = []
+    for r in rows:
+        out.append({
+            "result_id": r.get("result_id"),
+            "name": " ".join(x for x in (r.get("FirstName"), r.get("LastName")) if x) or "—",
+            "location": ", ".join(x for x in (r.get("City"), r.get("State")) if x) or "—",
+            "zip": r.get("ZipCode") or "",
+        })
+    return out, int(total)
+
 MONTHS_BACK = 3          # selector goes back this many months
 APPEND_UNIT_COST = 0.025  # $ per phone match + $ per email match (cost estimate)
 

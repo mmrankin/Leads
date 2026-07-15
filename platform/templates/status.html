@@ -52,11 +52,11 @@
       <button type="submit" class="btn btn--ghost" style="padding:4px 12px;font-size:12px">↻ Restart poller</button>
     </form>
   </div>
-  <div class="tile">
-    <div class="k">Flow switch</div>
+  <a class="tile tile-link" href="{{ url_for('trigger_leads') }}">
+    <div class="k">Flow switch →</div>
     <div class="v">{% if h.flow_on %}<span class="pill pill-on">ON</span>{% else %}<span class="pill pill-off">OFF</span>{% endif %}</div>
     <div class="s">Master automated-send toggle</div>
-  </div>
+  </a>
   <a class="tile tile-link" href="{{ url_for('leads') }}">
     <div class="k">Delivered today →</div>
     <div class="v">{{ h.sent_today if h.sent_today is not none else '—' }}</div>

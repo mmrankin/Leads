@@ -221,9 +221,60 @@ def poller_restart():
 @require_login
 def append_report():
     """Phone/email append activity (imdatacenter) + sends, by day and month."""
+    un_rows, un_total = append_view.unappended(limit=300)
     return render_template("append.html",
                            a=append_view.append_stats(request.args.get("month")),
+                           unappended=un_rows, unappended_total=un_total,
+                           drain_running=(pdb.get_setting("append_drain_running") == "1"),
                            on_append=True)
+
+
+def _append_one(result_id):
+    """Run the imdatacenter append for one trigger-view record (name/address from
+    the view). Returns (email, phones)."""
+    import pipeline_enrich as _pe
+    ls, db = _cp_source.LINKED_SERVER, _cp_source.DB
+    r = _cp_source.dlr.one(
+        "SELECT FirstName, LastName, Address1, City, State, ZipCode "
+        "FROM [%s].[%s].[dbo].[vw_EquifaxConsumerRecordTriggers] WHERE result_id=%%(r)s" % (ls, db),
+        {"r": int(result_id)}) or {}
+    lead = {"first_name": r.get("FirstName"), "last_name": r.get("LastName"),
+            "address": r.get("Address1"), "city": r.get("City"),
+            "state": r.get("State"), "zip": r.get("ZipCode")}
+    return _pe._append_contact(int(result_id), lead)
+
+
+@app.route("/append/one/<int:result_id>", methods=["POST"])
+@require_login
+def append_one(result_id):
+    if not _CP_SEND_OK:
+        flash("Append unavailable — credit modules failed to load.", "error")
+        return redirect(url_for("append_report"))
+    try:
+        email, phones = _append_one(result_id)
+        flash("Appended #%d — %d phone(s), email: %s." % (result_id, len(phones or []), email or "none"), "ok")
+    except Exception as e:
+        flash("Append failed for #%d: %s" % (result_id, str(e)[:140]), "error")
+    return redirect(url_for("append_report"))
+
+
+@app.route("/append/all", methods=["POST"])
+@require_login
+def append_all():
+    if pdb.get_setting("append_drain_running") == "1":
+        flash("Append-all is already running in the background.", "error")
+        return redirect(url_for("append_report"))
+    try:
+        import subprocess
+        drainer = os.path.join(CREDIT_DIR, "append_drainer.py")
+        subprocess.Popen([sys.executable, drainer], cwd=CREDIT_DIR,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+        flash("Append-all started — draining the backlog in the background. "
+              "Refresh to watch the count drop.", "ok")
+    except Exception as e:
+        flash("Could not start append-all: %s" % str(e)[:140], "error")
+    return redirect(url_for("append_report"))
 
 
 @app.route("/map")
