@@ -100,7 +100,7 @@
                 Dealer Lead Platform<br>Lead Form · Trade-In · Credit Estimator
             </div>
         </aside>
-        <main class="main">
+        <main class="main {{ 'main--wide' if on_dealers_list else '' }}">
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% for cat, msg in messages %}
                 <div class="alert {{ 'alert--ok' if cat == 'ok' else '' }}">{{ msg }}</div>
