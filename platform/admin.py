@@ -21,6 +21,7 @@ from flask import (
 import platform_db as pdb
 import leads_view
 import stats_view
+import health_view
 
 # The Credit Pipeline send path (build ADF -> email -> store -> record in `sent`)
 # lives in the credit app and is shared with the poller. Import it so the admin's
@@ -183,6 +184,13 @@ def stats_leads():
     return render_template("stats_leads.html",
                            l=stats_view.lead_stats(), c=stats_view.consumer_stats(),
                            scope=scope, on_stats_leads=True)
+
+
+@app.route("/status")
+@require_login
+def status():
+    """Dashboard: health of the automated Credit Pipeline send process."""
+    return render_template("status.html", h=health_view.send_health(), on_status=True)
 
 
 @app.route("/pipeline-flow", methods=["POST"])

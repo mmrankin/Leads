@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Send Status{% endblock %}
+{% block content %}
+<meta http-equiv="refresh" content="30">
+<style>
+  .st-banner { border-radius:12px; padding:16px 20px; margin-bottom:18px; border:1px solid;
+               display:flex; align-items:center; gap:14px; }
+  .st-banner .big { font-size:20px; font-weight:700; }
+  .st-ok    { background:rgba(29,158,117,.12); border-color:rgba(29,158,117,.45); color:#4fd1a5; }
+  .st-bad   { background:rgba(226,75,74,.12); border-color:rgba(226,75,74,.5); color:#f08a89; }
+  .st-off   { background:var(--panel2); border-color:var(--line); color:var(--muted); }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; margin-bottom:18px; }
+  .tile { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .tile .k { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+  .tile .v { font-size:26px; font-weight:700; margin-top:4px; line-height:1.1; }
+  .tile .s { color:var(--muted); font-size:12px; margin-top:3px; }
+  .v-bad { color:#f08a89; } .v-ok { color:#4fd1a5; } .v-warn { color:#e0a83e; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; }
+  .pill-on { background:rgba(29,158,117,.16); color:#4fd1a5; }
+  .pill-off{ background:rgba(226,75,74,.16); color:#f08a89; }
+  .pill-warn{ background:rgba(224,168,62,.16); color:#e0a83e; }
+</style>
+
+<h1>Automated Send Status</h1>
+<p class="subtitle">Health of the Credit Pipeline poller and delivery. Auto-refreshes every 30s.</p>
+
+{% if not h.flow_on %}
+  <div class="st-banner st-off"><span class="big">⏸ Flow is OFF</span>
+    <span>Automated sending is turned off — nothing is being delivered by design.</span></div>
+{% elif h.stalled %}
+  <div class="st-banner st-bad"><span class="big">✖ STALLED</span>
+    <span>The poller hasn't checked in for
+      {{ h.mins_since_run if h.mins_since_run is not none else '—' }} min
+      (alert threshold {{ h.stall_threshold }} min). Leads are not flowing.</span></div>
+{% else %}
+  <div class="st-banner st-ok"><span class="big">● Flowing</span>
+    <span>Poller last ran {{ h.mins_since_run }} min ago. Delivery is healthy.</span></div>
+{% endif %}
+
+<div class="tiles">
+  <div class="tile">
+    <div class="k">Poller last run</div>
+    <div class="v {{ 'v-bad' if h.stalled else 'v-ok' }}">
+      {{ h.mins_since_run if h.mins_since_run is not none else '—' }}<span style="font-size:14px"> min ago</span></div>
+    <div class="s">{{ h.last_run or 'no run found in log' }}</div>
+  </div>
+  <div class="tile">
+    <div class="k">Flow switch</div>
+    <div class="v">{% if h.flow_on %}<span class="pill pill-on">ON</span>{% else %}<span class="pill pill-off">OFF</span>{% endif %}</div>
+    <div class="s">Master automated-send toggle</div>
+  </div>
+  <div class="tile">
+    <div class="k">Delivered today</div>
+    <div class="v">{{ h.sent_today if h.sent_today is not none else '—' }}</div>
+    <div class="s">{{ h.sent_last_hour if h.sent_last_hour is not none else '—' }} in the last hour</div>
+  </div>
+  <div class="tile">
+    <div class="k">Last delivery</div>
+    <div class="v" style="font-size:16px;margin-top:8px">{{ h.last_sent or '—' }}</div>
+    <div class="s">{{ h.sent_total if h.sent_total is not none else '—' }} sent all-time</div>
+  </div>
+  <div class="tile">
+    <div class="k">Backlog (unsent, not rejected)</div>
+    <div class="v {{ 'v-warn' if h.backlog and h.backlog > 50 else '' }}">{{ h.backlog if h.backlog is not none else '—' }}</div>
+    <div class="s">oldest {{ h.backlog_oldest_min if h.backlog_oldest_min is not none else '—' }} min · {{ h.feed_today if h.feed_today is not none else '—' }} new triggers today</div>
+  </div>
+  <div class="tile">
+    <div class="k">Append API (imdatacenter)</div>
+    <div class="v" style="font-size:16px;margin-top:8px">
+      {% if not h.append_configured %}<span class="pill pill-off">not configured</span>
+      {% elif h.append_paused %}<span class="pill pill-warn">cooldown</span>
+      {% else %}<span class="pill pill-on">active</span>{% endif %}</div>
+    <div class="s">{{ h.append_calls_today or 0 }} calls today · {{ h.append_phone_today or 0 }} phone / {{ h.append_email_today or 0 }} email matched</div>
+  </div>
+  <div class="tile">
+    <div class="k">Stall SMS alert</div>
+    <div class="v" style="font-size:16px;margin-top:8px">
+      {% if h.sms_configured %}<span class="pill pill-on">armed</span>{% else %}<span class="pill pill-off">not configured</span>{% endif %}</div>
+    <div class="s">{% if h.last_alert %}last alert {{ h.last_alert }}{% else %}no alerts sent{% endif %}</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Active dealers — last received</h2>
+  {% if h.dealers %}
+  <div style="overflow-x:auto">
+  <table class="tbl nowrap">
+    <thead><tr><th>Dealer</th><th>Code</th><th>Today</th><th>Max/mo</th><th>Last received</th><th>Ago</th></tr></thead>
+    <tbody>
+      {% for d in h.dealers %}
+      <tr>
+        <td>{{ d.dealer_name }}</td>
+        <td>{{ d.dealer_id }}</td>
+        <td>{{ d.today or 0 }}</td>
+        <td>{{ d.cap if d.cap is not none else '—' }}</td>
+        <td>{{ d.last_received or '—' }}</td>
+        <td>{% if d.mins_ago is none %}<span class="muted">never</span>
+            {% elif d.mins_ago > 720 %}<span class="v-warn">{{ d.mins_ago }} min</span>
+            {% else %}{{ d.mins_ago }} min{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="subtitle">No active Credit Pipeline dealers.</p>{% endif %}
+</div>
+{% endblock %}

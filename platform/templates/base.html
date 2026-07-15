@@ -23,6 +23,9 @@
                 <span class="tag">Dealer Lead Platform · Admin</span></div>
             <div class="nav-group">
                 <div class="nav-label">Manage</div>
+                <a class="nav-item {{ 'active' if on_status else '' }}" href="{{ url_for('status') }}">
+                    <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                    <span>Send Status</span></a>
                 <div class="nav-parent {{ 'open' if on_dealers_add or on_dealers_list else '' }}">
                     <svg class="ic" viewBox="0 0 24 24"><path d="M3 21h18M4 21V8l8-5 8 5v13M9 21v-6h6v6"/></svg>
                     <span>Dealers</span>
