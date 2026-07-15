@@ -145,8 +145,13 @@
   <h2>Not yet appended <span class="muted">({{ '{:,}'.format(unappended_total) }})</span></h2>
   <p class="subtitle">Trigger-view records not yet appended. A <strong>Last attempt</strong> time means the append API was tried but returned no phone or email; a blank means it hasn't been tried yet. The poller also drains these automatically over time.</p>
   <div style="display:flex;gap:14px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
-    {% if unappended_total %}
+    {% if eligible_total %}
     <button type="button" class="btn" {{ 'disabled' if drain_running else '' }}
+            onclick="appendAllEligible()"
+            title="Append only fresh (≤4h) records whose dealer has Credit Pipeline set up — the ones that could actually be sent">Append all Eligible ({{ '{:,}'.format(eligible_total) }})</button>
+    {% endif %}
+    {% if unappended_total %}
+    <button type="button" class="btn {{ 'btn--ghost' if eligible_total else '' }}" {{ 'disabled' if drain_running else '' }}
             onclick="appendAll({{ unappended[0].result_id if unappended else 0 }})">Append all ({{ '{:,}'.format(unappended_total) }})</button>
     {% endif %}
     {% if drain_running %}<span class="c-phone" style="font-weight:600">● Append-all running in the background — refresh to watch the count drop.</span>{% endif %}
@@ -258,6 +263,13 @@
     fetch('/append/all', { method: 'POST' }).catch(function () {});   // launch background drain
     if (firstRid) { window.runDiag(firstRid); }
     else { elTitle.textContent = 'Append all'; elSub.textContent = 'Draining started in the background.'; open(); }
+  };
+
+  window.appendAllEligible = function () {
+    if (!confirm('Append phone + email for all ELIGIBLE records — fresh (≤4h) and with a Credit Pipeline dealer set up? Each is a paid API call; they drain in the background.')) return;
+    fetch('/append/all-eligible', { method: 'POST' })
+      .then(function () { location.reload(); })
+      .catch(function () { location.reload(); });
   };
 })();
 </script>

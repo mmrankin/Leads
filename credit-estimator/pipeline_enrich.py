@@ -387,22 +387,69 @@ _APPEND_VIEW_SQL = (
     "LEFT JOIN dlrPro.dbo.credit_append_log al ON al.result_id = v.result_id "
     "WHERE al.result_id IS NULL ORDER BY v.result_id DESC")
 
+# "Eligible" subset — the records an append call could actually pay off on: not
+# yet appended, still fresh (returned within the send window; returned_at is UTC
+# → compare to GETUTCDATE()), and the trigger's dealer has an active, non-paused
+# CREDIT_PIPELINE grant today. Mirrors pipeline_source's stale + eligible gates so
+# the append spend tracks the sendable set. The freshness window shares the
+# poller's reject window (default 240 min = 4h). Minutes baked in at import (the
+# WHERE carries no % or {} so it survives the later % limit / .format ls/db).
+APPEND_ELIGIBLE_FRESH_MIN = int(os.environ.get("CREDITPIPELINE_REJECT_MIN", "240"))
+_APPEND_ELIGIBLE_WHERE = (
+    "WHERE al.result_id IS NULL "
+    "AND m.returned_at >= DATEADD(minute, -%d, GETUTCDATE()) "
+    "AND EXISTS (SELECT 1 FROM dlrPro.dbo.dealer_products dp "
+    "  WHERE dp.dealer_id = v.dealercode AND dp.product_code = 'CREDIT_PIPELINE' "
+    "  AND (dp.paused IS NULL OR dp.paused = 0) "
+    "  AND (dp.valid_from IS NULL OR dp.valid_from <= CONVERT(date, GETDATE())) "
+    "  AND (dp.valid_to   IS NULL OR dp.valid_to   >= CONVERT(date, GETDATE())))"
+    % APPEND_ELIGIBLE_FRESH_MIN)
+_APPEND_VIEW_ELIGIBLE_SQL = (
+    "SELECT TOP %d v.result_id, v.FirstName, v.LastName, v.Address1, v.City, v.State, v.ZipCode "
+    "FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecordTriggers] v "
+    "JOIN [{ls}].[{db}].[dbo].[match_result] m ON m.result_id = v.result_id "
+    "LEFT JOIN dlrPro.dbo.credit_append_log al ON al.result_id = v.result_id "
+    + _APPEND_ELIGIBLE_WHERE + " ORDER BY m.returned_at DESC")
 
-def append_from_view(limit=None, workers=None):
-    """Ensure a phone+email append call for EVERY record in the Equifax trigger
-    view: append each view row not yet in credit_append_log, once (name/address
-    from the view itself). Bounded per call and honors the circuit breaker, so
-    the backlog drains over cycles and stays covered going forward. Returns the
-    number of appends attempted. Records skipped during a cooldown stay unlogged
-    and get retried on a later cycle."""
+_APPENDABLE_COUNT_SQL = (
+    "SELECT COUNT(*) c FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecordTriggers] v "
+    "LEFT JOIN dlrPro.dbo.credit_append_log al ON al.result_id = v.result_id "
+    "WHERE al.result_id IS NULL")
+_APPENDABLE_ELIGIBLE_COUNT_SQL = (
+    "SELECT COUNT(*) c FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecordTriggers] v "
+    "JOIN [{ls}].[{db}].[dbo].[match_result] m ON m.result_id = v.result_id "
+    "LEFT JOIN dlrPro.dbo.credit_append_log al ON al.result_id = v.result_id "
+    + _APPEND_ELIGIBLE_WHERE)
+
+
+def appendable_count(eligible=False):
+    """How many trigger-view records are still un-appended (eligible=True → also
+    fresh + with an active CREDIT_PIPELINE dealer). 0 on error."""
+    sql = _APPENDABLE_ELIGIBLE_COUNT_SQL if eligible else _APPENDABLE_COUNT_SQL
+    try:
+        return int(dlr.query(sql.format(ls=LINKED_SERVER, db=CP_DB))[0]["c"])
+    except Exception as e:                           # never break the page/drainer
+        LOG.warning("appendable_count failed (eligible=%s): %s", eligible, e)
+        return 0
+
+
+def append_from_view(limit=None, workers=None, eligible=False):
+    """Ensure a phone+email append call for records in the Equifax trigger view:
+    append each view row not yet in credit_append_log, once (name/address from the
+    view itself). eligible=True restricts to the sendable subset — fresh + active
+    CREDIT_PIPELINE dealer (see _APPEND_ELIGIBLE_WHERE). Bounded per call and honors
+    the circuit breaker, so the backlog drains over cycles and stays covered going
+    forward. Returns the number of appends attempted. Records skipped during a
+    cooldown stay unlogged and get retried on a later cycle."""
     limit = APPEND_VIEW_BATCH if limit is None else limit
     workers = APPEND_VIEW_WORKERS if workers is None else workers
     if limit <= 0 or not append_api.is_configured() or pdb.append_api_paused():
         return 0
+    sql = _APPEND_VIEW_ELIGIBLE_SQL if eligible else _APPEND_VIEW_SQL
     try:
-        rows = dlr.query((_APPEND_VIEW_SQL % int(limit)).format(ls=LINKED_SERVER, db=CP_DB))
+        rows = dlr.query((sql % int(limit)).format(ls=LINKED_SERVER, db=CP_DB))
     except Exception as e:
-        LOG.warning("append_from_view fetch failed: %s", e)
+        LOG.warning("append_from_view fetch failed (eligible=%s): %s", eligible, e)
         return 0
 
     def _do(r):

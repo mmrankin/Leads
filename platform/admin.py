@@ -223,9 +223,17 @@ def append_report():
     """Phone/email append activity (imdatacenter) + sends, by day and month."""
     un_rows, un_total = append_view.unappended(limit=300)
     ap_rows, ap_total = append_view.appended(limit=300)
+    eligible_total = 0
+    if _CP_SEND_OK:
+        try:
+            import pipeline_enrich as _pe
+            eligible_total = _pe.appendable_count(eligible=True)
+        except Exception:
+            eligible_total = 0
     return render_template("append.html",
                            a=append_view.append_stats(request.args.get("month")),
                            unappended=un_rows, unappended_total=un_total,
+                           eligible_total=eligible_total,
                            appended=ap_rows, appended_total=ap_total,
                            drain_running=(pdb.get_setting("append_drain_running") == "1"),
                            on_append=True)
@@ -316,12 +324,11 @@ def append_send(result_id):
     return redirect(url_for("append_report"))
 
 
-@app.route("/append/all", methods=["POST"])
-@require_login
-def append_all():
+def _launch_drainer(eligible=False):
+    """Launch the detached append drainer (whole backlog, or the eligible subset).
+    Returns (ok, message)."""
     if pdb.get_setting("append_drain_running") == "1":
-        flash("Append-all is already running in the background.", "error")
-        return redirect(url_for("append_report"))
+        return False, "An append-all is already running in the background."
     try:
         import subprocess
         drainer = os.path.join(CREDIT_DIR, "append_drainer.py")
@@ -330,13 +337,32 @@ def append_all():
         venv_py = os.path.join(os.path.dirname(CREDIT_DIR), "dealer-leads", ".venv", "bin", "python")
         python = os.environ.get("APPEND_PYTHON",
                                 venv_py if os.path.exists(venv_py) else sys.executable)
-        subprocess.Popen([python, drainer], cwd=CREDIT_DIR,
+        args = [python, drainer] + (["eligible"] if eligible else [])
+        subprocess.Popen(args, cwd=CREDIT_DIR,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          start_new_session=True)
-        flash("Append-all started — draining the backlog in the background. "
-              "Refresh to watch the count drop.", "ok")
+        which = "Eligible append" if eligible else "Append-all"
+        return True, ("%s started — draining in the background. "
+                      "Refresh to watch the count drop." % which)
     except Exception as e:
-        flash("Could not start append-all: %s" % str(e)[:140], "error")
+        return False, "Could not start the drainer: %s" % str(e)[:140]
+
+
+@app.route("/append/all", methods=["POST"])
+@require_login
+def append_all():
+    ok, msg = _launch_drainer(eligible=False)
+    flash(msg, "ok" if ok else "error")
+    return redirect(url_for("append_report"))
+
+
+@app.route("/append/all-eligible", methods=["POST"])
+@require_login
+def append_all_eligible():
+    """Append only the sendable subset: fresh (≤ send window) records whose dealer
+    has an active Credit Pipeline grant."""
+    ok, msg = _launch_drainer(eligible=True)
+    flash(msg, "ok" if ok else "error")
     return redirect(url_for("append_report"))
 
 
