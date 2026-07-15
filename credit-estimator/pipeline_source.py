@@ -20,7 +20,7 @@ LINKED_SERVER = os.environ.get("CREDITPIPELINE_LINKED_SERVER", "10.1.4.8")
 DB = os.environ.get("CREDITPIPELINE_DB", "CreditPipeline")
 
 # A matched lead is "rejected" (abandoned) once it's this old and still unsent.
-REJECT_AFTER_MINUTES = int(os.environ.get("CREDITPIPELINE_REJECT_MIN", "30"))
+REJECT_AFTER_MINUTES = int(os.environ.get("CREDITPIPELINE_REJECT_MIN", "240"))
 
 # Matched dealer (retailer_code = dealer_id), not yet in dbo.sent. The customer
 # record is LEFT-joined: when the customer_record_id doesn't exist, the poller

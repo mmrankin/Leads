@@ -611,7 +611,7 @@ def paused_by_dealer():
 
 # ----- Poller heartbeat (watchdog) -----
 # The poller stamps this at the start of every run; the watchdog reloads the
-# poller agent if it goes stale (unsent leads expire after ~30m, so a stalled
+# poller agent if it goes stale (unsent leads expire after ~4h, so a stalled
 # scheduler silently loses them).
 PIPELINE_HEARTBEAT_KEY = "pipeline_last_run"
 
