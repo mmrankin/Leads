@@ -159,7 +159,7 @@
   {% if unappended %}
   <div style="overflow-x:auto">
   <table class="tbl nowrap">
-    <thead><tr><th>Result</th><th>Name</th><th>Matched Dealer</th><th>CP</th><th title="Dealer's paced daily allowance needed today / already sent today — red when over">Capped</th><th>Location</th><th>Last attempt</th><th>Sent / Action</th><th></th></tr></thead>
+    <thead><tr><th>Result</th><th>Name</th><th>Matched Dealer</th><th>CP</th><th title="Dealer's paced daily allowance needed today / already sent today — red when over">Capped</th><th>Location</th><th>Sent / Action</th><th></th><th>Last attempt</th></tr></thead>
     <tbody>
       {% for u in unappended %}
       <tr>
@@ -168,7 +168,6 @@
         <td>{% if u.cp == 'Y' %}<span style="color:#4fd1a5;font-weight:700">Y</span>{% elif u.cp == 'P' %}<span style="color:#e0a83e;font-weight:700">P</span>{% else %}<span class="muted">–</span>{% endif %}</td>
         <td>{% if u.needed_today is not none %}<span style="color:{{ '#f08a89' if u.over_cap else '#4fd1a5' }};font-weight:600" title="Needed today (paced daily allowance) / sent today">{{ u.needed_today }} / {{ u.sent_today }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
         <td>{{ u.location }}</td>
-        <td>{% if u.last_attempt %}<span class="muted" title="Append API tried, no phone/email returned">{{ u.last_attempt }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
         <td>
           {% if u.sent_at %}<span style="color:#4fd1a5">Sent {{ u.sent_at }}</span>
           {% elif u.sendable %}
@@ -179,6 +178,7 @@
           {% else %}<span class="muted">not sent{% if u.cp != 'Y' %} · dealer off{% endif %}</span>{% endif %}
         </td>
         <td><button type="button" class="btn" style="padding:3px 12px;font-size:12px;background:#4fd1a5;border-color:#4fd1a5;color:#0b0e13" onclick="runDiag({{ u.result_id }})">Append</button></td>
+        <td>{% if u.last_attempt %}<span class="muted" title="Append API tried, no phone/email returned">{{ u.last_attempt }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
