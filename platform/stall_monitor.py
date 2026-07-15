@@ -61,7 +61,7 @@ def check_once():
     h = health_view.send_health()
     if not h.get("stalled"):
         return h
-    kicked = _kick_poller() if AUTO_KICK else False
+    kicked = kick_poller() if AUTO_KICK else False
     ago = _mins_since(pdb.get_setting(_ALERT_KEY))
     if ago is not None and ago < COOLDOWN_MIN:
         LOG.info("stalled %s min — alert suppressed (%.0f<%d cooldown); kicked=%s",
