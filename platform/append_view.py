@@ -29,7 +29,7 @@ _APPEND_AGG = (
     " FROM dlrPro.dbo.credit_append_log GROUP BY result_id) al")
 
 _UNAPPENDED_SQL = (
-    "SELECT TOP {limit} v.result_id, v.FirstName, v.LastName, v.City, v.State, v.ZipCode, "
+    "SELECT TOP {limit} v.result_id, v.FirstName, v.LastName, v.City, v.State, "
     "v.dealercode, d.dealer_name, "
     "CASE WHEN dp.dealer_id IS NULL THEN '-' "
     "     WHEN dp.paused = 1 THEN 'P' "
@@ -37,12 +37,14 @@ _UNAPPENDED_SQL = (
     "          AND (dp.valid_to IS NULL OR dp.valid_to >= CONVERT(date,GETDATE())) THEN 'Y' "
     "     ELSE '-' END AS cp_status, "
     # yy-mm-dd hh:mi (drop the century digits + the seconds)
-    "SUBSTRING(CONVERT(varchar(16), al.last_attempt, 120), 3, 14) AS last_attempt "
+    "SUBSTRING(CONVERT(varchar(16), al.last_attempt, 120), 3, 14) AS last_attempt, "
+    "CONVERT(varchar(19), s.created, 120) AS sent_at "
     "FROM [{ls}].[{db}].[dbo].[vw_EquifaxConsumerRecordTriggers] v "
     "LEFT JOIN " + _APPEND_AGG + " ON al.result_id = v.result_id "
     "LEFT JOIN dlrPro.dbo.dealers d ON d.dealer_id = v.dealercode "
     "LEFT JOIN dlrPro.dbo.dealer_products dp ON dp.dealer_id = d.dealer_id "
     "  AND dp.product_code = 'CREDIT_PIPELINE' "
+    "LEFT JOIN dlrPro.dbo.[sent] s ON s.result_id = v.result_id "
     "WHERE al.result_id IS NULL OR al.got = 0 "
     "ORDER BY v.result_id DESC")
 
@@ -61,15 +63,18 @@ def unappended(limit=300):
         return [], 0
     out = []
     for r in rows:
+        cp = (r.get("cp_status") or "-").strip()
+        sent_at = r.get("sent_at")
         out.append({
             "result_id": r.get("result_id"),
             "name": " ".join(x for x in (r.get("FirstName"), r.get("LastName")) if x) or "—",
             "location": ", ".join(x for x in (r.get("City"), r.get("State")) if x) or "—",
-            "zip": r.get("ZipCode") or "",
             "dealer_code": (r.get("dealercode") or "").strip(),
             "dealer": r.get("dealer_name") or "—",
-            "cp": (r.get("cp_status") or "-").strip(),
+            "cp": cp,
             "last_attempt": r.get("last_attempt"),
+            "sent_at": sent_at,
+            "sendable": (not sent_at) and cp == "Y",
         })
     _annotate_capping(out)
     return out, int(total)
