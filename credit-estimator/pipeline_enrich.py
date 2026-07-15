@@ -24,6 +24,11 @@ LOG = logging.getLogger("pipeline_enrich")
 # consumer email/phone, keyed by the same Consumer_ID as the credit view.
 EQUIFAX_DB = os.environ.get("CREDITPIPELINE_EQUIFAX_DB", "equifax")
 
+# The Equifax consumer tables (ConsumerEmails/ConsumerTelephones) are huge and on
+# a slow linked server; cap their lookup so a slow query can't block a send. They
+# only add EXTRA contacts to the notes — the primary contact comes from the append.
+EQUIFAX_CONTACT_TIMEOUT = int(os.environ.get("CREDITPIPELINE_EQUIFAX_TIMEOUT", "8"))
+
 # Equifax trigger view on the CreditPipeline linked server (10.1.4.8), reached
 # through the dlrPro connection via 4-part naming. Keyed by result_id (one row
 # per match_result — better coverage than consumer_id). Its "Estimated*" finance
@@ -157,12 +162,14 @@ def match_equifax_contacts(consumer_id):
         return out
     try:
         out["emails"] = [(r.get("emailAddress") or "").strip() for r in
-                         dlr.query(_EQUIFAX_EMAIL_SQL.format(ls=LINKED_SERVER, db=EQUIFAX_DB), {"cid": cid})]
+                         dlr.query(_EQUIFAX_EMAIL_SQL.format(ls=LINKED_SERVER, db=EQUIFAX_DB),
+                                   {"cid": cid}, timeout=EQUIFAX_CONTACT_TIMEOUT)]
     except Exception as e:
         LOG.warning("equifax email lookup failed (consumer_id=%s): %s", consumer_id, e)
     try:
         out["phones"] = [r.get("telephoneNumber") for r in
-                         dlr.query(_EQUIFAX_PHONE_SQL.format(ls=LINKED_SERVER, db=EQUIFAX_DB), {"cid": cid})]
+                         dlr.query(_EQUIFAX_PHONE_SQL.format(ls=LINKED_SERVER, db=EQUIFAX_DB),
+                                   {"cid": cid}, timeout=EQUIFAX_CONTACT_TIMEOUT)]
     except Exception as e:
         LOG.warning("equifax phone lookup failed (consumer_id=%s): %s", consumer_id, e)
     return out
@@ -472,7 +479,11 @@ def enrich_lead(lead, result_id=None, consumer_id=None):
     # the append API first, then the trigger view (consumer + appended),
     # tbl_ownership, and the Equifax consumer tables (every instance). The first is
     # the lead's primary contact; the rest go in the notes as "Additional Email/Phone".
-    ce = match_equifax_contacts(consumer_id)   # {"emails":[…], "phones":[…]} (equifax..Consumer*)
+    # Skip the slow Equifax consumer-table lookup when the append already returned
+    # both a phone and an email — the contact is covered, and this is what makes a
+    # send of an already-appended lead fast.
+    ce = ({"emails": [], "phones": []} if (api_email and api_phones)
+          else match_equifax_contacts(consumer_id))
     emails = _dedupe_emails([
         api_email,                                     # imdatacenter append (primary if found)
         lead.get("email"),                             # payload / customer_record
