@@ -681,10 +681,11 @@ def _trigger_filters():
     f_customer = request.args.get("customer") == "1"
     f_dealer = request.args.get("dealer") == "1"
     f_phone = (request.args.get("phone") == "1") if applied else True
+    f_cp = (request.args.get("cp_setup") == "1") if applied else True
     f_sent = request.args.get("sent", "unsent")
     if f_sent not in ("unsent", "sent", "all"):
         f_sent = "unsent"
-    return f_customer, f_dealer, f_phone, f_sent
+    return f_customer, f_dealer, f_phone, f_cp, f_sent
 
 
 @app.route("/trigger-leads")
@@ -692,9 +693,10 @@ def _trigger_filters():
 def trigger_leads():
     # Fast shell — the slow results table and "available to send" count load async
     # (with a spinner) from /trigger-leads/data so the page paints immediately.
-    f_customer, f_dealer, f_phone, f_sent = _trigger_filters()
+    f_customer, f_dealer, f_phone, f_cp, f_sent = _trigger_filters()
     return render_template("trigger_leads.html",
-                           f_customer=f_customer, f_dealer=f_dealer, f_phone=f_phone, f_sent=f_sent,
+                           f_customer=f_customer, f_dealer=f_dealer, f_phone=f_phone,
+                           f_cp=f_cp, f_sent=f_sent,
                            pipeline_flow=pdb.get_pipeline_flow(), can_send=_CP_SEND_OK,
                            sent_today=pdb.sent_today_total(),
                            no_phone_today=pdb.no_phone_today())
@@ -705,12 +707,12 @@ def trigger_leads():
 def trigger_leads_data():
     """The slow half of the Trigger Leads page (enriched rows + available count),
     returned as JSON for the async load."""
-    f_customer, f_dealer, f_phone, f_sent = _trigger_filters()
+    f_customer, f_dealer, f_phone, f_cp, f_sent = _trigger_filters()
     rows = leads_view.trigger_leads(matching_customer=f_customer, matching_dealer=f_dealer,
-                                    matching_phone=f_phone, sent_status=f_sent)
+                                    matching_phone=f_phone, cp_setup=f_cp, sent_status=f_sent)
     results_html = render_template("_trigger_rows.html", rows=rows, can_send=_CP_SEND_OK,
                                    f_customer=f_customer, f_dealer=f_dealer,
-                                   f_phone=f_phone, f_sent=f_sent)
+                                   f_phone=f_phone, f_cp=f_cp, f_sent=f_sent)
     return jsonify(available=leads_view.available_to_send_count(), results_html=results_html)
 
 

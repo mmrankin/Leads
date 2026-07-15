@@ -507,7 +507,7 @@ def _lead_ids_for_results(result_ids):
 
 
 def trigger_leads(matching_customer=False, matching_dealer=False,
-                  matching_phone=False, sent_status="unsent", limit=200):
+                  matching_phone=False, cp_setup=False, sent_status="unsent", limit=200):
     """The `limit` newest rows (by result_id, descending) from the CreditPipeline
     match_result feed joined to the ADF dealer and the sent ledger. Filters:
     matching_customer (Equifax consumer record found), matching_dealer
@@ -524,6 +524,15 @@ def trigger_leads(matching_customer=False, matching_dealer=False,
     conds = ["m.rejected = 0"]
     if matching_dealer:
         conds.append("d.dealer_name IS NOT NULL")
+    if cp_setup:
+        # Only leads whose matched dealer is fully set up on Credit Pipeline
+        # (an active, non-paused CREDIT_PIPELINE grant).
+        conds.append(
+            "EXISTS (SELECT 1 FROM dlrPro.dbo.dealer_products dp "
+            "WHERE dp.dealer_id = d.dealer_id AND dp.product_code = 'CREDIT_PIPELINE' "
+            "AND (dp.paused IS NULL OR dp.paused = 0) "
+            "AND (dp.valid_from IS NULL OR dp.valid_from <= CONVERT(date, GETDATE())) "
+            "AND (dp.valid_to IS NULL OR dp.valid_to >= CONVERT(date, GETDATE())))")
     if sent_status == "unsent":
         conds.append("s.id IS NULL")
     elif sent_status == "sent":

@@ -51,6 +51,11 @@
             <input type="checkbox" name="phone" value="1" {{ 'checked' if f_phone else '' }}>
             <span>Matching phone</span>
         </label>
+        <label class="check" style="flex-direction:row;align-items:center;gap:8px"
+               title="Only leads whose matched dealer has an active Credit Pipeline grant">
+            <input type="checkbox" name="cp_setup" value="1" {{ 'checked' if f_cp else '' }}>
+            <span>Credit Pipeline setup</span>
+        </label>
         <div class="field" style="max-width:180px">
             <label>Sent status</label>
             <select name="sent">
