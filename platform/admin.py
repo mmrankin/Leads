@@ -24,6 +24,7 @@ import stats_view
 import health_view
 import append_view
 import map_view
+import revenue_view
 import stall_monitor
 import tunnel_monitor
 
@@ -225,6 +226,15 @@ def poller_restart():
     flash("Poller restart requested — it should run within a few seconds." if ok
           else "Could not restart the poller.", "ok" if ok else "error")
     return redirect(url_for("status"))
+
+
+@app.route("/revenue")
+@require_login
+def revenue_report():
+    """Revenue report: leads x per-lead price, by month/day/dealer/lead type."""
+    return render_template("revenue.html",
+                           r=revenue_view.revenue_stats(request.args.get("month")),
+                           on_revenue=True)
 
 
 @app.route("/append")
