@@ -15,6 +15,7 @@ Usage:
     python pipeline_poller.py --dry-run   # resolve + log only; never send/store
 """
 
+import calendar
 import json
 import logging
 import os
@@ -238,11 +239,16 @@ def run(dry_run=False):
         LOG.info("No matched, unsent trigger leads.")
         return
 
+    # Days left in the current month, counting today — used to pace each
+    # dealer's monthly max across the remaining days.
+    today = date.today()
+    days_left = calendar.monthrange(today.year, today.month)[1] - today.day + 1
+
     interval = pdb.get_pipeline_interval()   # min minutes between sends to a dealer
     counts = {}
     month_sent = {}   # dealers.id -> Credit Pipeline leads already sent this month
     today_sent = {}   # dealers.id -> Credit Pipeline leads already sent today
-    daily_cap = {}    # dealers.id -> today's allowance (grant max/day, default max/month)
+    daily_cap = {}    # dealers.id -> today's allowance (explicit max/day, else paced)
     max_cap = {}      # dealer_id  -> monthly cap
     last_sent_min = {}  # dealers.id -> minutes since last send (seeded from DB, 0 after a send this run)
     for row in rows:
@@ -261,9 +267,19 @@ def run(dry_run=False):
         if did not in month_sent:
             month_sent[did] = pdb.sent_this_month(did)
             today_sent[did] = pdb.sent_today(did)
-            # Today's allowance: the grant's max/day, defaulting to its max per
-            # month when unset. The monthly cap above stays the hard ceiling.
-            daily_cap[did] = pdb.pipeline_max_leads_per_day(dcode)
+            # Today's allowance: an explicit per-grant max/day when set, else
+            # pace the remaining monthly allotment evenly over the days left so
+            # a dealer's whole month can't go out on day one. The paced base is
+            # sends made BEFORE today (month_sent minus today's) so the day's
+            # allowance stays fixed as today_sent climbs toward it. ceil,
+            # floored at 0: e.g. 300/month, 30 days left -> 10/day; 0 sent with
+            # 20 days left -> 15/day. The monthly cap stays the hard ceiling.
+            day_max = pdb.pipeline_max_leads_per_day(dcode)
+            if day_max is not None:
+                daily_cap[did] = day_max
+            else:
+                before_today = month_sent[did] - today_sent[did]
+                daily_cap[did] = max(0, -(-(cap - before_today) // days_left))
 
         # Monthly cap: hard ceiling for the calendar month.
         if month_sent[did] >= cap:

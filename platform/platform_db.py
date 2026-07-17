@@ -758,16 +758,15 @@ def pipeline_max_leads(dealer_id, on_date=None):
 
 
 def pipeline_max_leads_per_day(dealer_id, on_date=None):
-    """Credit Pipeline max leads/day for a dealer: the active grant's explicit
-    max_leads_per_day, defaulting to the grant's max per month when unset (so
-    with no daily max the month's allotment isn't throttled by day)."""
+    """Explicit Credit Pipeline max leads/day from the active grant, or None
+    (-> the poller paces the monthly cap over the days left instead)."""
     g = get_active_grant(dealer_id, PRODUCT_CREDIT_PIPELINE, on_date)
     if g and g.get("max_leads_per_day") is not None:
         try:
             return int(g["max_leads_per_day"])
         except (TypeError, ValueError):
             pass
-    return pipeline_max_leads(dealer_id, on_date)
+    return None
 
 
 def sync_grant_daily_max(dealer_id, product_code):
