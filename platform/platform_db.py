@@ -758,15 +758,16 @@ def pipeline_max_leads(dealer_id, on_date=None):
 
 
 def pipeline_max_leads_per_day(dealer_id, on_date=None):
-    """Explicit Credit Pipeline max leads/day from the active grant, or None
-    (-> the poller paces the monthly cap over the days left instead)."""
+    """Credit Pipeline max leads/day for a dealer: the active grant's explicit
+    max_leads_per_day, defaulting to the grant's max per month when unset (so
+    with no daily max the month's allotment isn't throttled by day)."""
     g = get_active_grant(dealer_id, PRODUCT_CREDIT_PIPELINE, on_date)
     if g and g.get("max_leads_per_day") is not None:
         try:
             return int(g["max_leads_per_day"])
         except (TypeError, ValueError):
             pass
-    return None
+    return pipeline_max_leads(dealer_id, on_date)
 
 
 def sync_grant_daily_max(dealer_id, product_code):
@@ -781,15 +782,18 @@ def sync_grant_daily_max(dealer_id, product_code):
     return val
 
 
+DEFAULT_SEND_START = "05:00"
+DEFAULT_SEND_END = "23:59"
+
+
 def within_send_window(dealer_id, now_hhmm=None):
-    """(ok, (start, end)) — ok is False only when the dealer has BOTH
-    send_start_time and send_end_time set ('HH:MM') and the local time is
-    outside the window. An overnight window (start > end) wraps midnight."""
+    """(ok, (start, end)) — ok is True while the local time is inside the
+    dealer's send window ('HH:MM'); unset times default to DEFAULT_SEND_START /
+    DEFAULT_SEND_END (05:00-23:59). An overnight window (start > end) wraps
+    midnight."""
     d = get_dealer(dealer_id) or {}
-    start = (d.get("send_start_time") or "").strip() or None
-    end = (d.get("send_end_time") or "").strip() or None
-    if not start or not end:
-        return True, (start, end)
+    start = (d.get("send_start_time") or "").strip() or DEFAULT_SEND_START
+    end = (d.get("send_end_time") or "").strip() or DEFAULT_SEND_END
     now = now_hhmm or datetime.now().strftime("%H:%M")
     if start <= end:
         ok = start <= now <= end

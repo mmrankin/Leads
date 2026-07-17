@@ -56,16 +56,17 @@
             </div>
             <div class="field">
                 <label>Send Leads From <span class="optional">(local time)</span></label>
-                <input type="time" name="send_start_time" value="{{ dealer.send_start_time or '' }}">
+                <input type="time" name="send_start_time" value="{{ dealer.send_start_time or '05:00' }}">
             </div>
             <div class="field">
-                <label>Send Leads Until <span class="optional">(blank = no window)</span></label>
-                <input type="time" name="send_end_time" value="{{ dealer.send_end_time or '' }}">
+                <label>Send Leads Until</label>
+                <input type="time" name="send_end_time" value="{{ dealer.send_end_time or '23:59' }}">
             </div>
         </div>
-        {% if dealer.send_start_time and dealer.send_end_time %}
-        <p class="subtitle" style="margin-top:-4px">Leads are only sent between <strong>{{ dealer.send_start_time }}</strong> and <strong>{{ dealer.send_end_time }}</strong>. Outside that window the poller holds them.</p>
-        {% endif %}
+        <p class="subtitle" style="margin-top:-4px">Leads are only sent between
+            <strong>{{ dealer.send_start_time or '05:00' }}</strong> and
+            <strong>{{ dealer.send_end_time or '23:59' }}</strong> (default 05:00&ndash;23:59).
+            Outside that window sends hold until it opens.</p>
         <button type="submit" class="btn">Save Details</button>
     </form>
 </div>
@@ -91,7 +92,8 @@
             <td>{{ '%.2f'|format(g.per_lead_price) if g.per_lead_price is not none else '—' }}</td>
             <td>{{ g.max_leads_per_month if g.max_leads_per_month is not none else '10' }}</td>
             <td class="nowrap">
-                {{ g.max_leads_per_day if g.max_leads_per_day is not none else '—' }}
+                {% if g.max_leads_per_day is not none %}{{ g.max_leads_per_day }}
+                {% else %}<span class="muted" title="No max/day set — defaults to the product's max per month">{{ g.max_leads_per_month if g.max_leads_per_month is not none else '10' }} (mo)</span>{% endif %}
                 {% if g.max_leads_per_day is not none and dealer.max_leads_per_day is not none %}
                   {% if g.max_leads_per_day > dealer.max_leads_per_day %}
                   <span style="color:#e0a83e;font-weight:700" title="Above the dealer maximum ({{ dealer.max_leads_per_day }}/day)">&uarr;</span>
@@ -146,7 +148,7 @@
             <div class="field"><label>Monthly Price</label><input type="number" step="0.01" name="monthly_price" placeholder="0.00"></div>
             <div class="field"><label>Per-Lead Price</label><input type="number" step="0.01" name="per_lead_price" placeholder="0.00"></div>
             <div class="field"><label>Max Leads / Month <span class="optional">(Credit Pipeline)</span></label><input type="number" min="0" step="1" name="max_leads_per_month" value="10"></div>
-            <div class="field"><label>Max Leads / Day <span class="optional">(blank = pace the monthly max)</span></label><input type="number" min="0" step="1" name="max_leads_per_day"></div>
+            <div class="field"><label>Max Leads / Day <span class="optional">(blank = the product's max per month)</span></label><input type="number" min="0" step="1" name="max_leads_per_day"></div>
         </div>
         <button type="submit" class="btn">Save Grant</button>
     </form>
