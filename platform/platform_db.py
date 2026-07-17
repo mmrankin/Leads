@@ -53,6 +53,17 @@ def init_db():
     # no automated (or manual) sends, and show 'P' on CP reports.
     dlr.execute("IF COL_LENGTH('dealer_products', 'paused') IS NULL "
                 "ALTER TABLE dealer_products ADD paused BIT NOT NULL DEFAULT 0")
+    # Per-grant daily lead cap; NULL -> pace the monthly cap over the days left.
+    dlr.execute("IF COL_LENGTH('dealer_products', 'max_leads_per_day') IS NULL "
+                "ALTER TABLE dealer_products ADD max_leads_per_day INT NULL")
+    # Dealer-level defaults: a reference max/day (grants sync from it) and a
+    # send window ('HH:MM' local) outside which no leads are sent.
+    dlr.execute("IF COL_LENGTH('dbo.dealers', 'max_leads_per_day') IS NULL "
+                "ALTER TABLE dbo.dealers ADD max_leads_per_day INT NULL")
+    dlr.execute("IF COL_LENGTH('dbo.dealers', 'send_start_time') IS NULL "
+                "ALTER TABLE dbo.dealers ADD send_start_time VARCHAR(5) NULL")
+    dlr.execute("IF COL_LENGTH('dbo.dealers', 'send_end_time') IS NULL "
+                "ALTER TABLE dbo.dealers ADD send_end_time VARCHAR(5) NULL")
     for code, name, desc, source in DEFAULT_PRODUCTS:
         p = {"c": code, "n": name, "d": desc, "s": source}
         if dlr.one("SELECT 1 AS x FROM products WHERE product_code=%(c)s", p):
@@ -243,7 +254,8 @@ def list_dealers():
 def upsert_dealer(data):
     fields = ("dealer_id", "dealer_name", "address", "city", "state",
               "zip", "phone", "lead_email_address", "banner_url",
-              "crm_type_id", "lead_source_id")
+              "crm_type_id", "lead_source_id", "max_leads_per_day",
+              "send_start_time", "send_end_time")
     v = {k: (data.get(k) if data.get(k) not in ("", None) else None) for k in fields}
     if dlr.one("SELECT 1 AS x FROM dealers WHERE dealer_id=%(dealer_id)s", v):
         dlr.execute(
@@ -251,14 +263,18 @@ def upsert_dealer(data):
             "city=%(city)s, state=%(state)s, zip=%(zip)s, phone=%(phone)s, "
             "lead_email_address=%(lead_email_address)s, banner_url=%(banner_url)s, "
             "crm_type_id=%(crm_type_id)s, lead_source_id=%(lead_source_id)s, "
+            "max_leads_per_day=%(max_leads_per_day)s, "
+            "send_start_time=%(send_start_time)s, send_end_time=%(send_end_time)s, "
             f"updated_at={NOW} WHERE dealer_id=%(dealer_id)s", v)
     else:
         dlr.execute(
             "INSERT INTO dealers (dealer_id, dealer_name, address, city, state, zip, "
-            "phone, lead_email_address, banner_url, crm_type_id, lead_source_id) "
+            "phone, lead_email_address, banner_url, crm_type_id, lead_source_id, "
+            "max_leads_per_day, send_start_time, send_end_time) "
             "VALUES (%(dealer_id)s, %(dealer_name)s, %(address)s, %(city)s, %(state)s, "
             "%(zip)s, %(phone)s, %(lead_email_address)s, %(banner_url)s, "
-            "%(crm_type_id)s, %(lead_source_id)s)", v)
+            "%(crm_type_id)s, %(lead_source_id)s, %(max_leads_per_day)s, "
+            "%(send_start_time)s, %(send_end_time)s)", v)
 
 
 # ----- products -----
@@ -289,7 +305,8 @@ def list_grants(dealer_id=None):
 
 def upsert_grant(data):
     fields = ("dealer_id", "product_code", "valid_from", "valid_to",
-              "monthly_price", "per_lead_price", "max_leads_per_month")
+              "monthly_price", "per_lead_price", "max_leads_per_month",
+              "max_leads_per_day")
     v = {k: (data.get(k) if data.get(k) not in ("",) else None) for k in fields}
     if dlr.one("SELECT 1 AS x FROM dealer_products WHERE dealer_id=%(dealer_id)s "
                "AND product_code=%(product_code)s", v):
@@ -297,13 +314,15 @@ def upsert_grant(data):
             "UPDATE dealer_products SET valid_from=%(valid_from)s, valid_to=%(valid_to)s, "
             "monthly_price=%(monthly_price)s, per_lead_price=%(per_lead_price)s, "
             "max_leads_per_month=%(max_leads_per_month)s, "
+            "max_leads_per_day=%(max_leads_per_day)s, "
             f"updated_at={NOW} WHERE dealer_id=%(dealer_id)s AND product_code=%(product_code)s", v)
     else:
         dlr.execute(
             "INSERT INTO dealer_products (dealer_id, product_code, valid_from, valid_to, "
-            "monthly_price, per_lead_price, max_leads_per_month) VALUES (%(dealer_id)s, "
-            "%(product_code)s, %(valid_from)s, %(valid_to)s, %(monthly_price)s, "
-            "%(per_lead_price)s, %(max_leads_per_month)s)", v)
+            "monthly_price, per_lead_price, max_leads_per_month, max_leads_per_day) "
+            "VALUES (%(dealer_id)s, %(product_code)s, %(valid_from)s, %(valid_to)s, "
+            "%(monthly_price)s, %(per_lead_price)s, %(max_leads_per_month)s, "
+            "%(max_leads_per_day)s)", v)
 
 
 def delete_grant(grant_id):
@@ -736,6 +755,47 @@ def pipeline_max_leads(dealer_id, on_date=None):
         except (TypeError, ValueError):
             pass
     return DEFAULT_MAX_LEADS_PER_MONTH
+
+
+def pipeline_max_leads_per_day(dealer_id, on_date=None):
+    """Explicit Credit Pipeline max leads/day from the active grant, or None
+    (-> the poller paces the monthly cap over the days left instead)."""
+    g = get_active_grant(dealer_id, PRODUCT_CREDIT_PIPELINE, on_date)
+    if g and g.get("max_leads_per_day") is not None:
+        try:
+            return int(g["max_leads_per_day"])
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def sync_grant_daily_max(dealer_id, product_code):
+    """Copy the dealer's max_leads_per_day onto one product grant (the 'Sync
+    Dealer Maximum per Day' button). Returns the dealer value (may be None)."""
+    d = get_dealer(dealer_id) or {}
+    val = d.get("max_leads_per_day")
+    dlr.execute(
+        "UPDATE dealer_products SET max_leads_per_day=%(v)s, "
+        f"updated_at={NOW} WHERE dealer_id=%(d)s AND product_code=%(p)s",
+        {"v": val, "d": dealer_id, "p": product_code})
+    return val
+
+
+def within_send_window(dealer_id, now_hhmm=None):
+    """(ok, (start, end)) — ok is False only when the dealer has BOTH
+    send_start_time and send_end_time set ('HH:MM') and the local time is
+    outside the window. An overnight window (start > end) wraps midnight."""
+    d = get_dealer(dealer_id) or {}
+    start = (d.get("send_start_time") or "").strip() or None
+    end = (d.get("send_end_time") or "").strip() or None
+    if not start or not end:
+        return True, (start, end)
+    now = now_hhmm or datetime.now().strftime("%H:%M")
+    if start <= end:
+        ok = start <= now <= end
+    else:                                   # e.g. 20:00 -> 06:00
+        ok = now >= start or now <= end
+    return ok, (start, end)
 
 
 def sent_this_month(dealers_id):

@@ -128,6 +128,9 @@ def eligible(row):
         return False, "no active CREDIT_PIPELINE grant"
     if pdb.dealer_cp_paused(row.get("dealer_id")):
         return False, "dealer paused"
+    ok_win, (w_start, w_end) = pdb.within_send_window(row.get("dealer_id"))
+    if not ok_win:
+        return False, f"outside send window ({w_start}-{w_end})"
     c = resolve_contact(row)
     if not c["last_name"] and not c["first_name"]:
         return False, "no customer name (record or payload)"
@@ -270,7 +273,11 @@ def run(dry_run=False):
             # stays fixed as today_sent climbs toward it. ceil, floored at 0:
             # e.g. 300/month, 30 days left -> 10/day; 0 sent with 20 days left -> 15/day.
             before_today = month_sent[did] - today_sent[did]
-            daily_cap[did] = max(0, -(-(cap - before_today) // days_left))
+            paced = max(0, -(-(cap - before_today) // days_left))
+            # An explicit per-grant max/day replaces the paced allowance; the
+            # monthly cap above stays the hard ceiling either way.
+            day_max = pdb.pipeline_max_leads_per_day(dcode)
+            daily_cap[did] = paced if day_max is None else day_max
 
         # Monthly cap: hard ceiling for the calendar month.
         if month_sent[did] >= cap:

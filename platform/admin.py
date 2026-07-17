@@ -602,6 +602,8 @@ def save_dealer():
     data["crm_type_id"] = int(crm) if crm else None
     src = (request.form.get("lead_source_id") or "").strip()
     data["lead_source_id"] = int(src) if src else None
+    for f in ("max_leads_per_day", "send_start_time", "send_end_time"):
+        data[f] = (request.form.get(f) or "").strip() or None
     if not (data["dealer_id"] and data["dealer_name"] and data["lead_email_address"]):
         flash("DealerID, Dealer Name and Lead Email Address are required.", "error")
         return redirect(url_for("dealers_add"))
@@ -629,6 +631,7 @@ def dealer(dealer_id):
             "monthly_price": "" if g.get("monthly_price") is None else str(g["monthly_price"]),
             "per_lead_price": "" if g.get("per_lead_price") is None else str(g["per_lead_price"]),
             "max_leads_per_month": "" if g.get("max_leads_per_month") is None else str(g["max_leads_per_month"]),
+            "max_leads_per_day": "" if g.get("max_leads_per_day") is None else str(g["max_leads_per_day"]),
         }
         for g in grants
     }
@@ -955,12 +958,29 @@ def save_grant():
         "monthly_price": (request.form.get("monthly_price") or "").strip(),
         "per_lead_price": (request.form.get("per_lead_price") or "").strip(),
         "max_leads_per_month": (request.form.get("max_leads_per_month") or "").strip(),
+        "max_leads_per_day": (request.form.get("max_leads_per_day") or "").strip(),
     }
     if not (data["dealer_id"] and data["product_code"]):
         flash("Dealer and product are required.", "error")
     else:
         pdb.upsert_grant(data)
         flash(f"Saved {data['product_code']} grant.", "ok")
+    return redirect(url_for("dealer", dealer_id=dealer_id))
+
+
+@app.route("/grant/sync-daily", methods=["POST"])
+@require_login
+def sync_grant_daily():
+    """'Sync Dealer Maximum per Day' — copy the dealer's max/day onto one grant."""
+    dealer_id = request.form.get("dealer_id")
+    product_code = request.form.get("product_code")
+    if not (dealer_id and product_code):
+        abort(400)
+    val = pdb.sync_grant_daily_max(dealer_id, product_code)
+    if val is None:
+        flash(f"{product_code}: dealer has no Max Leads / Day set — grant max/day cleared.", "ok")
+    else:
+        flash(f"{product_code}: max/day synced to the dealer maximum ({val}).", "ok")
     return redirect(url_for("dealer", dealer_id=dealer_id))
 
 

@@ -49,6 +49,23 @@
                 </select>
             </div>
         </div>
+        <div class="row">
+            <div class="field">
+                <label>Max Leads / Day <span class="optional">(dealer maximum — products can sync from this)</span></label>
+                <input type="number" min="0" step="1" name="max_leads_per_day" value="{{ dealer.max_leads_per_day if dealer.max_leads_per_day is not none else '' }}">
+            </div>
+            <div class="field">
+                <label>Send Leads From <span class="optional">(local time)</span></label>
+                <input type="time" name="send_start_time" value="{{ dealer.send_start_time or '' }}">
+            </div>
+            <div class="field">
+                <label>Send Leads Until <span class="optional">(blank = no window)</span></label>
+                <input type="time" name="send_end_time" value="{{ dealer.send_end_time or '' }}">
+            </div>
+        </div>
+        {% if dealer.send_start_time and dealer.send_end_time %}
+        <p class="subtitle" style="margin-top:-4px">Leads are only sent between <strong>{{ dealer.send_start_time }}</strong> and <strong>{{ dealer.send_end_time }}</strong>. Outside that window the poller holds them.</p>
+        {% endif %}
         <button type="submit" class="btn">Save Details</button>
     </form>
 </div>
@@ -57,7 +74,7 @@
     <h2>Product Access</h2>
     {% if grants %}
     <table class="tbl">
-        <thead><tr><th>Product</th><th>Link</th><th>Valid From</th><th>Valid To</th><th>Monthly $</th><th>Per-Lead $</th><th>Max/mo</th><th></th></tr></thead>
+        <thead><tr><th>Product</th><th>Link</th><th>Valid From</th><th>Valid To</th><th>Monthly $</th><th>Per-Lead $</th><th>Max/mo</th><th>Max/day</th><th></th></tr></thead>
         <tbody>
         {% for g in grants %}
         <tr>
@@ -73,6 +90,24 @@
             <td>{{ '%.2f'|format(g.monthly_price) if g.monthly_price is not none else '—' }}</td>
             <td>{{ '%.2f'|format(g.per_lead_price) if g.per_lead_price is not none else '—' }}</td>
             <td>{{ g.max_leads_per_month if g.max_leads_per_month is not none else '10' }}</td>
+            <td class="nowrap">
+                {{ g.max_leads_per_day if g.max_leads_per_day is not none else '—' }}
+                {% if g.max_leads_per_day is not none and dealer.max_leads_per_day is not none %}
+                  {% if g.max_leads_per_day > dealer.max_leads_per_day %}
+                  <span style="color:#e0a83e;font-weight:700" title="Above the dealer maximum ({{ dealer.max_leads_per_day }}/day)">&uarr;</span>
+                  {% elif g.max_leads_per_day < dealer.max_leads_per_day %}
+                  <span style="color:#378add;font-weight:700" title="Below the dealer maximum ({{ dealer.max_leads_per_day }}/day)">&darr;</span>
+                  {% else %}
+                  <span style="color:#4fd1a5" title="Matches the dealer maximum">=</span>
+                  {% endif %}
+                {% endif %}
+                <form method="post" action="{{ url_for('sync_grant_daily') }}" style="display:inline">
+                    <input type="hidden" name="dealer_id" value="{{ dealer.dealer_id }}">
+                    <input type="hidden" name="product_code" value="{{ g.product_code }}">
+                    <button class="link-btn" type="submit"
+                            title="Set this product's max/day to the dealer maximum ({{ dealer.max_leads_per_day if dealer.max_leads_per_day is not none else 'not set' }})">Sync Dealer Maximum per Day</button>
+                </form>
+            </td>
             <td class="nowrap">
                 <form method="post" action="{{ url_for('dealer_pause') }}" style="display:inline">
                     <input type="hidden" name="dealer_id" value="{{ dealer.dealer_id }}">
@@ -111,6 +146,7 @@
             <div class="field"><label>Monthly Price</label><input type="number" step="0.01" name="monthly_price" placeholder="0.00"></div>
             <div class="field"><label>Per-Lead Price</label><input type="number" step="0.01" name="per_lead_price" placeholder="0.00"></div>
             <div class="field"><label>Max Leads / Month <span class="optional">(Credit Pipeline)</span></label><input type="number" min="0" step="1" name="max_leads_per_month" value="10"></div>
+            <div class="field"><label>Max Leads / Day <span class="optional">(blank = pace the monthly max)</span></label><input type="number" min="0" step="1" name="max_leads_per_day"></div>
         </div>
         <button type="submit" class="btn">Save Grant</button>
     </form>
@@ -122,7 +158,7 @@
         var form = document.querySelector('form[action="{{ url_for('save_grant') }}"]');
         if (!form) return;
         var sel = form.querySelector('select[name="product_code"]');
-        var fields = ['valid_from', 'valid_to', 'monthly_price', 'per_lead_price', 'max_leads_per_month'];
+        var fields = ['valid_from', 'valid_to', 'monthly_price', 'per_lead_price', 'max_leads_per_month', 'max_leads_per_day'];
         var btn = form.querySelector('button[type="submit"]');
         function fill() {
             var g = GRANTS[sel.value];
