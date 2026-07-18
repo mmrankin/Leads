@@ -38,6 +38,9 @@
     </h2>
 
     <div class="tiles">
+        <div class="tile" title="{{ s.ftp_msg }}">
+            <div class="n" style="color:{{ '#4fd1a5' if s.ftp_ok else '#f08a89' }}">{{ 'Up' if s.ftp_ok else 'Down' }}</div>
+            <div class="l">FTP{% if s.ftp_dir %} · {{ s.ftp_dir }}{% endif %}</div></div>
         <div class="tile"><div class="n">{{ 'Yes' if s.session else 'No' }}</div><div class="l">Session</div></div>
         <div class="tile"><div class="n {{ 'stale' if s.stale else '' }}">{{ s.last_age_str }}</div><div class="l">Last run</div></div>
         {% if st %}
