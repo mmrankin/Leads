@@ -45,3 +45,27 @@ Downloads land in `manheim/downloads/`; on any Share/Export failure, a screensho
 and page HTML are written to `manheim/debug/` for troubleshooting.
 
 If a run reports "logged out", re-run step 1 to refresh the session.
+
+## Scheduling (after the one-time login)
+
+Each site has a ready-to-load LaunchAgent in `deploy/` that runs
+`scrapers/run.sh <site>` on a schedule (Copart every 15 min; Manheim and Adesa
+hourly — change `StartInterval` to adjust). They run **headful** in the logged-in
+Aqua session, so the Mac Studio must stay logged in. Load one after its session
+is saved:
+
+```bash
+cp ~/claude/deploy/com.dealerplatform.scraper.copart.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.dealerplatform.scraper.copart.plist
+# (repeat with manheim / adesa)
+```
+
+Stop / reload one:
+
+```bash
+launchctl bootout gui/$(id -u)/com.dealerplatform.scraper.copart
+```
+
+Logs: `deploy/scraper.<site>.out.log` / `.err.log`. Run status also shows on the
+admin **Auction → Scraper Status** page.
+
