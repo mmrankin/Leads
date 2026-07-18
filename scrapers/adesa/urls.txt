@@ -1,0 +1,32 @@
+# Adesa open-auction saved-search result URLs to export, one per line.
+# Blank lines and lines starting with # are ignored.
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502136
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502133
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502134
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502135
+https://buy.adesa.com/openauction/searchResults31.html?ssid=501281
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502131
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502132
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502139
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502140
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502141
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502142
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502143
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502144
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502145
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502146
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502147
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502148
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502149
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502150
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502151
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502152
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502153
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502154
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502155
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502157
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502158
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502159
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502160
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502137
+https://buy.adesa.com/openauction/searchResults31.html?ssid=502138
