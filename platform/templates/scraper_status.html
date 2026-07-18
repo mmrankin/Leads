@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Scraper Status{% endblock %}
+{% block content %}
+<style>
+  .badge { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+  .b-ok        { background:#12351f; color:#4fd1a5; }
+  .b-partial   { background:#3a2f12; color:#e6b64c; }
+  .b-logged_out{ background:#3a1720; color:#f08a89; }
+  .b-session_ready { background:#12283a; color:#5b9cff; }
+  .b-never, .b-unknown { background:#25293292; color:#9aa4b2; }
+  .tiles { display:flex; gap:12px; flex-wrap:wrap; margin:6px 0 14px; }
+  .tile { padding:8px 16px; border:1px solid var(--line); border-radius:var(--radius); background:var(--panel2); min-width:96px; }
+  .tile .n { font-size:24px; font-weight:600; line-height:1.1; }
+  .tile .l { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin-top:4px; }
+  .stale { color:#e6b64c; }
+  td.u { max-width:520px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+</style>
+<h1>Scraper Status</h1>
+<p class="subtitle">
+    Auction scrapers that log in, export saved searches, and upload the files to
+    <strong>ftp.vin10.net</strong>. Status is recorded after each run.
+</p>
+
+{% set labels = {'ok':'Healthy','partial':'Partial','logged_out':'Logged out',
+                 'session_ready':'Session ready','never':'Never run','unknown':'Unknown'} %}
+
+{% if not sites %}
+<div class="card"><p class="subtitle">No scrapers configured yet.</p></div>
+{% endif %}
+
+{% for s in sites %}
+{% set st = s.status %}
+<div class="card">
+    <h2 style="text-transform:capitalize;display:flex;align-items:center;gap:12px">
+        {{ s.site }}
+        <span class="badge b-{{ s.health }}">{{ labels.get(s.health, s.health) }}</span>
+        {% if s.stale %}<span class="badge b-partial" title="Last run is over 24h old">stale</span>{% endif %}
+    </h2>
+
+    <div class="tiles">
+        <div class="tile"><div class="n">{{ 'Yes' if s.session else 'No' }}</div><div class="l">Session</div></div>
+        <div class="tile"><div class="n {{ 'stale' if s.stale else '' }}">{{ s.last_age_str }}</div><div class="l">Last run</div></div>
+        {% if st %}
+        <div class="tile"><div class="n">{{ st.downloaded if st.downloaded is not none else '—' }}{% if st.urls_total %}/{{ st.urls_total }}{% endif %}</div><div class="l">Downloaded</div></div>
+        <div class="tile"><div class="n">{{ st.uploaded if st.uploaded is not none else '—' }}</div><div class="l">Uploaded</div></div>
+        <div class="tile"><div class="n" style="color:{{ '#f08a89' if st.failed else 'inherit' }}">{{ st.failed or 0 }}</div><div class="l">Failed</div></div>
+        {% endif %}
+    </div>
+
+    {% if st and st.error %}
+    <p class="subtitle" style="color:#f08a89"><strong>Last error:</strong> {{ st.error }}</p>
+    {% endif %}
+
+    {% if not s.session %}
+    <p class="subtitle">No saved login session yet. On the Mac Studio, run
+        <code>../.venv/bin/python scraper.py --login</code> in
+        <code>scrapers/{{ s.site }}/</code> to sign in once.</p>
+    {% elif not st %}
+    <p class="subtitle">Logged in, but no run has been recorded yet.</p>
+    {% endif %}
+
+    {% if st and st.results %}
+    <div style="overflow-x:auto">
+    <table class="tbl nowrap">
+        <thead><tr><th>#</th><th>Result</th><th>File</th><th>URL</th></tr></thead>
+        <tbody>
+        {% for r in st.results %}
+        <tr>
+            <td class="muted">{{ loop.index }}</td>
+            <td>{% if r.ok %}<span style="color:#4fd1a5;font-weight:600">OK</span>{% else %}<span style="color:#f08a89;font-weight:600">FAIL</span>{% endif %}</td>
+            <td>{{ r.file or (r.error or '—') }}</td>
+            <td class="u muted" title="{{ r.url }}">{{ r.url }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% endif %}
+
+    {% if st and st.run_start %}
+    <p class="subtitle" style="margin-top:10px">Run: {{ st.run_start }} → {{ st.run_end }}
+        {% if st.mode %}<span class="muted">({{ st.mode }})</span>{% endif %}</p>
+    {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

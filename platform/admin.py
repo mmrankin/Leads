@@ -21,6 +21,7 @@ from flask import (
 import platform_db as pdb
 import leads_view
 import stats_view
+import scrapers_view
 import health_view
 import append_view
 import map_view
@@ -213,6 +214,14 @@ def stats_leads():
 def status():
     """Dashboard: health of the automated Credit Pipeline send process."""
     return render_template("status.html", h=health_view.send_health(), on_status=True)
+
+
+@app.route("/auction/scrapers")
+@require_login
+def scraper_status():
+    """Auction scraper run status (Manheim / Adesa / Copart)."""
+    return render_template("scraper_status.html",
+                           sites=scrapers_view.all_status(), on_scrapers=True)
 
 
 @app.route("/poller-restart", methods=["POST"])

@@ -16,6 +16,7 @@ screenshot are written to ./debug so the exact controls can be pinned down.
 """
 import argparse
 import datetime
+import json
 import os
 import pathlib
 import sys
@@ -29,6 +30,20 @@ PROFILE_DIR = BASE / "profile"
 DOWNLOAD_DIR = BASE / "downloads"
 DEBUG_DIR = BASE / "debug"
 URLS_FILE = BASE / "urls.txt"
+STATUS_FILE = BASE / "status.json"   # last-run summary, read by the admin status page
+
+
+def _now():
+    return datetime.datetime.now().isoformat(timespec="seconds")
+
+
+def write_status(payload):
+    """Persist the last-run summary for the admin Scraper Status page."""
+    payload["written_at"] = _now()
+    try:
+        STATUS_FILE.write_text(json.dumps(payload, indent=2))
+    except Exception:
+        pass
 
 # Load shared secrets and make the shared uploader importable.
 load_dotenv(SCRAPERS / ".env")
@@ -156,49 +171,75 @@ def do_login():
             input()
         except EOFError:
             page.wait_for_timeout(120000)
+        logged_in = not looks_logged_out(page)
         ctx.close()
         print("Session saved to %s" % PROFILE_DIR)
+        write_status({"site": "manheim", "mode": "login", "logged_in": logged_in,
+                      "run_start": None, "run_end": _now(), "results": [],
+                      "downloaded": 0, "failed": 0, "uploaded": 0, "error": None})
 
 
 def do_scrape(headless, do_upload, only):
     urls = load_urls()
     if only:
         urls = urls[:only]
-    files, failures = [], []
+    run_start = _now()
+    results = []   # per-URL: {url, ok, file, error}
+    files = []
+    error = None
+    logged_in = True
     with sync_playwright() as pw:
         ctx, page = open_context(pw, headless=headless)
         try:
             page.goto(START_URL, wait_until="domcontentloaded", timeout=60000)
             if looks_logged_out(page):
+                logged_in = False
+                error = "not logged in — run: python scraper.py --login"
                 print("Not logged in. Run:  python scraper.py --login")
-                ctx.close()
-                return 2
-            for i, url in enumerate(urls, 1):
-                print("[%d/%d] %s" % (i, len(urls), url))
-                try:
-                    saved = export_one(page, url, i)
-                except RuntimeError as e:
-                    print("   ! %s" % e)
-                    ctx.close()
-                    return 2
-                if saved:
-                    print("   downloaded %s" % os.path.basename(saved))
-                    files.append(saved)
-                else:
-                    print("   ! export failed (see ./debug)")
-                    failures.append(url)
+            else:
+                for i, url in enumerate(urls, 1):
+                    print("[%d/%d] %s" % (i, len(urls), url))
+                    try:
+                        saved = export_one(page, url, i)
+                    except RuntimeError as e:   # session dropped mid-run
+                        logged_in = False
+                        error = str(e)
+                        print("   ! %s" % e)
+                        results.append({"url": url, "ok": False, "file": None, "error": str(e)})
+                        break
+                    if saved:
+                        print("   downloaded %s" % os.path.basename(saved))
+                        files.append(saved)
+                        results.append({"url": url, "ok": True,
+                                        "file": os.path.basename(saved), "error": None})
+                    else:
+                        print("   ! export failed (see ./debug)")
+                        results.append({"url": url, "ok": False, "file": None,
+                                        "error": "export failed (see debug/)"})
         finally:
             ctx.close()
 
+    failed = sum(1 for r in results if not r["ok"])
     print("\nDownloaded %d/%d files." % (len(files), len(urls)))
-    if failures:
-        print("Failed URLs: %d (debug artifacts in %s)" % (len(failures), DEBUG_DIR))
+    if failed:
+        print("Failed URLs: %d (debug artifacts in %s)" % (failed, DEBUG_DIR))
+    uploaded = []
     if files and do_upload:
         print("Uploading %d file(s) to FTP %s ..." % (len(files), os.environ.get("MANHEIM_REMOTE_DIR")))
-        written = ftp_upload.upload_files(files, remote_dir=os.environ.get("MANHEIM_REMOTE_DIR"))
-        for w in written:
-            print("   uploaded %s" % w)
-    return 0 if files and not failures else 1
+        try:
+            uploaded = ftp_upload.upload_files(files, remote_dir=os.environ.get("MANHEIM_REMOTE_DIR"))
+            for w in uploaded:
+                print("   uploaded %s" % w)
+        except Exception as e:
+            error = error or ("upload failed: %s" % e)
+            print("   ! upload failed: %s" % e)
+
+    write_status({"site": "manheim", "mode": "scrape", "logged_in": logged_in,
+                  "run_start": run_start, "run_end": _now(),
+                  "urls_total": len(urls), "downloaded": len(files),
+                  "failed": failed, "uploaded": len(uploaded),
+                  "results": results, "error": error})
+    return 0 if files and not failed and logged_in else 1
 
 
 def main():
