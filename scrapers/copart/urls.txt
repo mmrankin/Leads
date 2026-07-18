@@ -1,0 +1,2 @@
+# Copart sales-data URL (single). Blank lines and # lines are ignored.
+https://www.copart.com/downloadSalesData/
