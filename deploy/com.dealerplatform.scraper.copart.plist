@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Runs the Copart scraper every 15 minutes (matching Copart's sales-data
-     refresh) as a user LaunchAgent. Load only after the one-time login:
+<!-- Runs the Copart scraper every 48 hours as a user LaunchAgent. Load only
+     after the one-time login:
        cp com.dealerplatform.scraper.copart.plist ~/Library/LaunchAgents/
        launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.dealerplatform.scraper.copart.plist
      Runs headful in the logged-in session; launchd won't start a second copy while
@@ -16,7 +16,7 @@
         <string>copart</string>
     </array>
     <key>StartInterval</key>
-    <integer>900</integer>
+    <integer>172800</integer>
     <key>RunAtLoad</key>
     <true/>
     <key>StandardOutPath</key>

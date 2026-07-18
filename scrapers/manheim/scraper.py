@@ -29,20 +29,25 @@ def export_one(page, url, index, paths):
         sc.dump_debug(page, paths, "loggedout_%02d" % index)
         raise sc.LoggedOut("session appears logged out — re-run with --login")
 
-    if not sc.click_first(page, [("role", "Share"), ("text", "Share"),
-                                 ("css", "[aria-label*='Share' i]"),
-                                 ("css", "[data-testid*='share' i]")]):
+    # Open the Share menu (stable data-testid), then click Export inside it.
+    if not sc.click_first(page, [("css", "[data-testid='share-menu-button']"),
+                                 ("text", "Share")]):
         sc.dump_debug(page, paths, "no_share_%02d" % index)
         return None
-    page.wait_for_timeout(1200)
+    sc.pace(page)  # let the menu render (and don't move at bot speed)
 
+    # The menu opens with Share Link / Export / Print. The visible Export item is
+    # the only element with aria-label exactly "Export" (the hidden
+    # export-data-button helper is aria-label "hidden-export-share").
+    export = page.locator("[aria-label='Export']").first
+    try:
+        export.wait_for(state="visible", timeout=12000)
+    except PWTimeout:
+        sc.dump_debug(page, paths, "no_export_%02d" % index)
+        return None
     try:
         with page.expect_download(timeout=60000) as dl:
-            if not sc.click_first(page, [("role", "Export"), ("text", "Export"),
-                                         ("css", "[aria-label*='Export' i]"),
-                                         ("css", "[data-testid*='export' i]")]):
-                sc.dump_debug(page, paths, "no_export_%02d" % index)
-                return None
+            export.click()
         download = dl.value
     except PWTimeout:
         sc.dump_debug(page, paths, "no_download_%02d" % index)

@@ -11,6 +11,7 @@ import datetime
 import json
 import os
 import pathlib
+import random
 import sys
 
 from dotenv import load_dotenv
@@ -77,6 +78,14 @@ def dump_debug(page, paths, tag):
         (paths.debug / ("%s.html" % stamp)).write_text(page.content(), encoding="utf-8")
     except Exception:
         pass
+
+
+def pace(page, lo_ms=2500, hi_ms=6000):
+    """A randomized, human-like pause. These sites watch for bot-speed activity and
+    can invalidate the session if pages are hit too fast, so we never move at
+    machine speed — every wait is randomized rather than uniform. Runs happen only
+    every ~48h, so there is no reason to hurry."""
+    page.wait_for_timeout(random.randint(lo_ms, hi_ms))
 
 
 def click_first(page, strategies, timeout=8000):
@@ -173,6 +182,11 @@ def do_scrape(cfg, headless, do_upload, only):
                         print("   ! export failed (see ./debug)")
                         results.append({"url": url, "ok": False, "file": None,
                                         "error": "export failed (see debug/)"})
+                    # Space out requests so the run doesn't look like a bot sweep.
+                    # Generous by design — these sites tolerate 30-min spacing, and
+                    # runs are only every ~48h, so ~30-75s between pages is plenty.
+                    if i < len(urls):
+                        page.wait_for_timeout(random.randint(30000, 75000))
         finally:
             ctx.close()
 

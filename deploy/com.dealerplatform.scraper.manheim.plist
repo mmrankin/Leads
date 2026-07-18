@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Runs the Manheim scraper hourly as a user LaunchAgent. Load only after the
-     one-time login:
+<!-- Runs the Manheim scraper every 48 hours as a user LaunchAgent. Load only
+     after the one-time login:
        cp com.dealerplatform.scraper.manheim.plist ~/Library/LaunchAgents/
        launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.dealerplatform.scraper.manheim.plist
      Runs headful in the logged-in session; launchd won't start a second copy while
@@ -15,7 +15,7 @@
         <string>manheim</string>
     </array>
     <key>StartInterval</key>
-    <integer>3600</integer>
+    <integer>172800</integer>
     <key>RunAtLoad</key>
     <true/>
     <key>StandardOutPath</key>
