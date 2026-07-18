@@ -161,14 +161,11 @@ def do_scrape(cfg, headless, do_upload, only):
         ctx, page = open_context(pw, cfg.paths, headless=headless)
         try:
             page.goto(cfg.start_url, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_timeout(2500)  # let any client-side redirect to login settle
-            if looks_logged_out(page, cfg.login_hints) and cfg.login_recover:
-                print("Session not active — attempting sign-in with saved credentials...")
-                try:
-                    cfg.login_recover(page)
-                except Exception as e:
-                    print("   login recovery error: %s" % e)
-            if looks_logged_out(page, cfg.login_hints):
+            page.wait_for_timeout(2500)  # let any client-side redirect settle
+            # Sites with a login_recover re-auth per-URL inside export_one (the
+            # recovery controls only appear on the results page), so only fail-fast
+            # up front when there is no recovery path at all (e.g. Manheim).
+            if looks_logged_out(page, cfg.login_hints) and not cfg.login_recover:
                 logged_in = False
                 error = "not logged in — run: python scraper.py --login"
                 print("Not logged in. Run:  python scraper.py --login")
@@ -177,6 +174,10 @@ def do_scrape(cfg, headless, do_upload, only):
                     print("[%d/%d] %s" % (i, len(urls), url))
                     try:
                         saved = cfg.export_one(page, url, i, cfg.paths)
+                        if not saved:   # one retry for a transient export/download miss
+                            page.wait_for_timeout(random.randint(8000, 15000))
+                            print("   retrying...")
+                            saved = cfg.export_one(page, url, i, cfg.paths)
                     except _LoggedOut as e:
                         logged_in = False
                         error = str(e)

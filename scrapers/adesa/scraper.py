@@ -60,7 +60,7 @@ def export_one(page, url, index, paths):
     # "Open with Excel" downloads the results spreadsheet. Try a range of forms
     # (link/button/image/title) since the exact control isn't known yet.
     try:
-        with page.expect_download(timeout=60000) as dl:
+        with page.expect_download(timeout=120000) as dl:   # large exports can be slow
             if not sc.click_first(page, [
                     ("link", "Open with Excel"), ("text", "Open with Excel"),
                     ("link", "Open in Excel"), ("text", "Open in Excel"),
