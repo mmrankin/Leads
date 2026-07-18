@@ -18,6 +18,24 @@ import scraper_common as sc  # noqa: E402
 from playwright.sync_api import TimeoutError as PWTimeout  # noqa: E402
 
 
+def login_recover(page):
+    """The openauction (ADESA Classic) session expires quickly, but the user stays
+    authenticated at the ADESA level (ADESA Clear SSO / trusted browser), so the
+    'Please Log In' page offers a 'LOGIN WITH ADESA CLEAR' button (#loginCapId).
+    Click it to silently re-auth through the existing SSO session — no password."""
+    cap = page.locator("#loginCapId").first
+    if not cap.is_visible(timeout=4000):
+        return
+    sc.pace(page)
+    cap.click()
+    try:
+        page.wait_for_load_state("networkidle", timeout=45000)
+    except PWTimeout:
+        pass
+    page.wait_for_timeout(4000)  # let the SAML round-trip settle
+    sc.pace(page)
+
+
 def export_one(page, url, index, paths):
     page.goto(url, wait_until="domcontentloaded", timeout=60000)
     try:
@@ -26,6 +44,15 @@ def export_one(page, url, index, paths):
         pass
     page.wait_for_timeout(3000)  # wait for the results to fully display
 
+    # The classic session drops often; re-auth via ADESA Clear SSO, then reload.
+    if sc.looks_logged_out(page, CFG.login_hints):
+        login_recover(page)
+        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        try:
+            page.wait_for_load_state("networkidle", timeout=45000)
+        except PWTimeout:
+            pass
+        page.wait_for_timeout(3000)
     if sc.looks_logged_out(page, CFG.login_hints):
         sc.dump_debug(page, paths, "loggedout_%02d" % index)
         raise sc.LoggedOut("session appears logged out — re-run with --login")
@@ -58,6 +85,7 @@ CFG = sc.SiteCfg(
     login_hints=sc.DEFAULT_LOGIN_HINTS + ("adesa.com/u/login", "marketplace.adesa"),
     login_note="On the 2FA step, check 'save this browser for 30 days' before finishing.",
     paths=sc.paths_for(__file__),
+    login_recover=login_recover,
 )
 
 if __name__ == "__main__":
