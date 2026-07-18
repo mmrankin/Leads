@@ -28,8 +28,11 @@ CHROME_ARGS = ["--disable-blink-features=AutomationControlled", "--start-maximiz
 DEFAULT_LOGIN_HINTS = ("login", "signin", "sign-in", "oauth", "authorize", "identity", "auth.")
 
 Paths = collections.namedtuple("Paths", "site_dir profile download debug urls status")
+# login_recover(page) is optional: called when the run lands logged-out, to
+# re-establish a session that didn't persist (e.g. Copart's session-cookie auth).
 SiteCfg = collections.namedtuple(
-    "SiteCfg", "site start_url login_url remote_dir_env export_one login_hints login_note paths")
+    "SiteCfg", "site start_url login_url remote_dir_env export_one login_hints login_note paths login_recover")
+SiteCfg.__new__.__defaults__ = (None,)   # login_recover defaults to None
 
 
 def paths_for(site_file):
@@ -158,6 +161,13 @@ def do_scrape(cfg, headless, do_upload, only):
         ctx, page = open_context(pw, cfg.paths, headless=headless)
         try:
             page.goto(cfg.start_url, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(2500)  # let any client-side redirect to login settle
+            if looks_logged_out(page, cfg.login_hints) and cfg.login_recover:
+                print("Session not active — attempting sign-in with saved credentials...")
+                try:
+                    cfg.login_recover(page)
+                except Exception as e:
+                    print("   login recovery error: %s" % e)
             if looks_logged_out(page, cfg.login_hints):
                 logged_in = False
                 error = "not logged in — run: python scraper.py --login"
