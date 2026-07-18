@@ -1,0 +1,15 @@
+# Manheim saved-search result URLs to export, one per line.
+# Blank lines and lines starting with # are ignored.
+https://search.manheim.com/results?deeplink=%2Fresults%2F047093da-abc5-4a8c-8292-94b6e5efdca3
+https://search.manheim.com/results?deeplink=%2Fresults%2F047093da-abc5-4a8c-8292-94b6e5efdca3%3Fsort%3DtimeRemainingAsc
+https://search.manheim.com/results?deeplink=%2Fresults%2F047093da-abc5-4a8c-8292-94b6e5efdca3%3Fsort%3DtimeRemainingDesc
+https://search.manheim.com/results?deeplink=%2Fresults%2Fb5379a7f-ecbc-4ba8-8031-bb52356669bd%3Fsort%3Drelevance
+https://search.manheim.com/results?deeplink=%2Fresults%2Fb5379a7f-ecbc-4ba8-8031-bb52356669bd%3Fsort%3DpercentMMRDesc
+https://search.manheim.com/results?deeplink=%2Fresults%2Fb5379a7f-ecbc-4ba8-8031-bb52356669bd%3Fsort%3DtimeRemainingAsc
+https://search.manheim.com/results?deeplink=%2Fresults%2Fb5379a7f-ecbc-4ba8-8031-bb52356669bd%3Fsort%3DtimeRemainingDesc
+https://search.manheim.com/results?deeplink=%2Fresults%2F56529115-18c1-46b6-92bf-211df611f6cd%3Fsort%3Drelevance
+https://search.manheim.com/results?deeplink=%2Fresults%2F56529115-18c1-46b6-92bf-211df611f6cd%3Fsort%3DadjustMMRDesc
+https://search.manheim.com/results?deeplink=%2Fresults%2F56529115-18c1-46b6-92bf-211df611f6cd%3Fsort%3DtimeRemainingAsc
+https://search.manheim.com/results?deeplink=%2Fresults%2F56529115-18c1-46b6-92bf-211df611f6cd%3Fsort%3DtimeRemainingDesc
+https://search.manheim.com/results?deeplink=%2Fresults%2F7f517f2a-fa2d-49f2-8be9-35b6fe5a752d%3Fsort%3DtimeRemainingAsc
+https://search.manheim.com/results?deeplink=%2Fresults%2F7f517f2a-fa2d-49f2-8be9-35b6fe5a752d%3Fsort%3DtimeRemainingDesc

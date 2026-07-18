@@ -1,0 +1,8 @@
+# Secrets and per-machine state — never commit these.
+.env
+.venv/
+**/profile/
+**/downloads/
+**/debug/
+__pycache__/
+*.pyc
