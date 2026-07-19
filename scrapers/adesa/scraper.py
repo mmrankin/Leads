@@ -57,23 +57,32 @@ def export_one(page, url, index, paths):
         sc.dump_debug(page, paths, "loggedout_%02d" % index)
         raise sc.LoggedOut("session appears logged out — re-run with --login")
 
-    # "Open with Excel" downloads the results spreadsheet. Try a range of forms
-    # (link/button/image/title) since the exact control isn't known yet.
+    # "Open with Excel" downloads the results spreadsheet. Large result sets open
+    # the file in a NEW TAB, so watch the whole browser context for the download
+    # (page.expect_download only sees the current page and misses the popup).
+    holder = []
+    ctx = page.context
+    handler = lambda d: holder.append(d)
+    ctx.on("download", handler)
     try:
-        with page.expect_download(timeout=120000) as dl:   # large exports can be slow
-            if not sc.click_first(page, [
-                    ("link", "Open with Excel"), ("text", "Open with Excel"),
-                    ("link", "Open in Excel"), ("text", "Open in Excel"),
-                    ("text", "Excel"),
-                    ("css", "a[href*='excel' i]"), ("css", "a[href*='xls' i]"),
-                    ("css", "[title*='Excel' i]"), ("css", "img[alt*='Excel' i]")]):
-                sc.dump_debug(page, paths, "no_excel_%02d" % index)
-                return None
-        download = dl.value
-    except PWTimeout:
+        if not sc.click_first(page, [
+                ("link", "Open with Excel"), ("text", "Open with Excel"),
+                ("link", "Open in Excel"), ("text", "Open in Excel"),
+                ("text", "Excel"),
+                ("css", "a[href*='excel' i]"), ("css", "a[href*='xls' i]"),
+                ("css", "[title*='Excel' i]"), ("css", "img[alt*='Excel' i]")]):
+            sc.dump_debug(page, paths, "no_excel_%02d" % index)
+            return None
+        for _ in range(180):            # wait up to ~180s for the download (any tab)
+            if holder:
+                break
+            page.wait_for_timeout(1000)
+    finally:
+        ctx.remove_listener("download", handler)
+    if not holder:
         sc.dump_debug(page, paths, "no_download_%02d" % index)
         return None
-    return sc.save_download(download, paths, "adesa", index)
+    return sc.save_download(holder[0], paths, "adesa", index)
 
 
 CFG = sc.SiteCfg(
