@@ -4,5 +4,8 @@
 **/profile/
 **/downloads/
 **/debug/
+control.json
+**/history.jsonl
+**/.running
 __pycache__/
 *.pyc

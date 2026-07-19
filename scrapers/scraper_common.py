@@ -56,6 +56,12 @@ def write_status(paths, payload):
         paths.status.write_text(json.dumps(payload, indent=2))
     except Exception:
         pass
+    # Append a one-line record to the run history (read by the admin report).
+    try:
+        with open(paths.site_dir / "history.jsonl", "a") as fh:
+            fh.write(json.dumps(payload) + "\n")
+    except Exception:
+        pass
 
 
 def looks_logged_out(page, hints):
