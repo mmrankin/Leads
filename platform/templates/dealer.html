@@ -84,6 +84,10 @@
                 {% if g.url %}
                 <a href="{{ g.url }}" target="_blank" rel="noopener">Open ↗</a>
                 <button type="button" class="link-btn copy-link" data-url="{{ g.url }}" title="Copy link">copy</button>
+                {% if g.embed %}
+                <br><button type="button" class="link-btn copy-embed" data-embed="{{ g.embed }}"
+                            title="Copy the iframe install code for this dealer's {{ g.product_code }} form">Copy Install Code</button>
+                {% endif %}
                 {% else %}—{% endif %}
             </td>
             <td>{{ g.valid_from or '—' }}</td>
@@ -325,6 +329,15 @@ document.querySelectorAll('.copy-link').forEach(function (b) {
         (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject())
             .then(function () { var o = b.textContent; b.textContent = 'copied!'; setTimeout(function(){ b.textContent = o; }, 1200); })
             .catch(function () { window.prompt('Copy this link:', url); });
+    });
+});
+// Install code — the dealer-specific iframe snippet for an embeddable form.
+document.querySelectorAll('.copy-embed').forEach(function (b) {
+    b.addEventListener('click', function () {
+        var code = b.getAttribute('data-embed');
+        (navigator.clipboard ? navigator.clipboard.writeText(code) : Promise.reject())
+            .then(function () { var o = b.textContent; b.textContent = 'copied!'; setTimeout(function(){ b.textContent = o; }, 1400); })
+            .catch(function () { window.prompt('Copy this install code:', code); });
     });
 });
 </script>

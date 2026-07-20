@@ -102,6 +102,32 @@ def product_url(product_code, dealer_id):
         return None
     return base.rstrip("/") + path + dealer_id
 
+
+# Embeddable lead forms: the iframe install code a dealer drops into their own
+# site. (iframe title, pixel height) per product — Credit Pipeline is a bureau
+# feed with no customer-facing form, so it has no embed.
+PRODUCT_EMBEDS = {
+    pdb.PRODUCT_TRADE_IN: ("Value Your Trade", 1750),
+    pdb.PRODUCT_CREDIT_EST: ("Estimate Your Credit", 1750),
+    pdb.PRODUCT_LEAD_FORM: ("Get in Touch", 1750),
+}
+
+
+def embed_code(product_code, dealer_id):
+    """The dealer-specific iframe install code for an embeddable product, or
+    None. The wrapper div + lazy iframe match the markup dealers already use."""
+    meta = PRODUCT_EMBEDS.get(product_code)
+    url = product_url(product_code, dealer_id)
+    if not meta or not url:
+        return None
+    title, height = meta
+    return (
+        '<div class="visible-xs">\n'
+        '<iframe loading="lazy" src="%s" width="100%%" height="%d" frameborder="0" '
+        'title="%s" id="%s"></iframe>\n'
+        '</div>' % (url, height, title, dealer_id)
+    )
+
 US_STATES = [
     "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
     "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
@@ -665,6 +691,7 @@ def dealer(dealer_id):
     grants = pdb.list_grants(dealer_id)
     for g in grants:
         g["url"] = product_url(g["product_code"], dealer_id)
+        g["embed"] = embed_code(g["product_code"], dealer_id)
     # Existing grant values keyed by product_code, so the "Add / Update Grant"
     # form can pre-fill when an already-granted product is selected (avoids
     # overwriting a field with a blank on save). Dates -> 'YYYY-MM-DD'.
