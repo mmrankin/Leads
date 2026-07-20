@@ -22,7 +22,6 @@ from flask import (
 import platform_db as pdb
 import leads_view
 import stats_view
-import scrapers_view
 import health_view
 import append_view
 import map_view
@@ -241,48 +240,6 @@ def stats_leads():
 def status():
     """Dashboard: health of the automated Credit Pipeline send process."""
     return render_template("status.html", h=health_view.send_health(), on_status=True)
-
-
-_SCRAPERS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scrapers")
-
-
-@app.route("/auction/scrapers")
-@require_login
-def scraper_status():
-    """Auction scraper management: status, enable/disable, ad-hoc run, reports."""
-    return render_template("scraper_status.html",
-                           sites=scrapers_view.all_status(), on_scrapers=True)
-
-
-@app.route("/auction/scrapers/<site>/toggle", methods=["POST"])
-@require_login
-def scraper_toggle(site):
-    if site not in scrapers_view.SITES:
-        abort(404)
-    want = request.form.get("enable") == "1"
-    scrapers_view.set_enabled(site, want)
-    flash("%s scraper %s." % (site.capitalize(), "enabled" if want else "disabled"), "ok")
-    return redirect(url_for("scraper_status"))
-
-
-@app.route("/auction/scrapers/<site>/run", methods=["POST"])
-@require_login
-def scraper_run(site):
-    """Kick off an ad-hoc run now (bypasses the enabled flag via FORCE=1)."""
-    if site not in scrapers_view.SITES:
-        abort(404)
-    run_sh = os.path.join(_SCRAPERS_DIR, "run.sh")
-    log = os.path.join(os.path.dirname(_SCRAPERS_DIR), "deploy", "scraper.%s.out.log" % site)
-    try:
-        env = dict(os.environ, FORCE="1")
-        lf = open(log, "a")
-        subprocess.Popen(["/bin/bash", run_sh, site], stdout=lf,
-                         stderr=subprocess.STDOUT, env=env, cwd=_SCRAPERS_DIR,
-                         start_new_session=True)
-        flash("Started an ad-hoc run for %s — refresh in a bit for results." % site.capitalize(), "ok")
-    except Exception as e:
-        flash("Couldn't start %s: %s" % (site, e), "error")
-    return redirect(url_for("scraper_status"))
 
 
 @app.route("/poller-restart", methods=["POST"])
