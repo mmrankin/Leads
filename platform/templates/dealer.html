@@ -112,25 +112,29 @@
                   <span style="color:#4fd1a5" title="Matches the dealer maximum">=</span>
                   {% endif %}
                 {% endif %}
-                <form method="post" action="{{ url_for('sync_grant_daily') }}" style="display:inline">
-                    <input type="hidden" name="dealer_id" value="{{ dealer.dealer_id }}">
-                    <input type="hidden" name="product_code" value="{{ g.product_code }}">
-                    <button class="link-btn" type="submit"
-                            title="Set this product's max/day to the dealer maximum ({{ dealer.max_leads_per_day if dealer.max_leads_per_day is not none else 'not set' }})">Sync Dealer Maximum per Day</button>
-                </form>
             </td>
             <td class="nowrap">
-                <form method="post" action="{{ url_for('dealer_pause') }}" style="display:inline">
-                    <input type="hidden" name="dealer_id" value="{{ dealer.dealer_id }}">
-                    <input type="hidden" name="product_code" value="{{ g.product_code }}">
-                    <input type="hidden" name="paused" value="{{ '0' if g.paused else '1' }}">
-                    <button class="link-btn" type="submit" style="color:var(--amber)">{{ 'resume' if g.paused else 'pause' }}</button>
-                </form>
-                &nbsp;·&nbsp;
-                <form method="post" action="{{ url_for('remove_grant', grant_id=g.id) }}" style="display:inline" onsubmit="return confirm('Remove this grant?')">
-                    <input type="hidden" name="dealer_id" value="{{ dealer.dealer_id }}">
-                    <button class="link-btn" type="submit">remove</button>
-                </form>
+                <details class="lnk lnk--right">
+                    <summary>Actions</summary>
+                    <div class="lnk-menu">
+                        <form method="post" action="{{ url_for('sync_grant_daily') }}">
+                            <input type="hidden" name="dealer_id" value="{{ dealer.dealer_id }}">
+                            <input type="hidden" name="product_code" value="{{ g.product_code }}">
+                            <button type="submit"
+                                    title="Set this product's max/day to the dealer maximum ({{ dealer.max_leads_per_day if dealer.max_leads_per_day is not none else 'not set' }})">Sync Dealer Maximum per Day</button>
+                        </form>
+                        <form method="post" action="{{ url_for('dealer_pause') }}">
+                            <input type="hidden" name="dealer_id" value="{{ dealer.dealer_id }}">
+                            <input type="hidden" name="product_code" value="{{ g.product_code }}">
+                            <input type="hidden" name="paused" value="{{ '0' if g.paused else '1' }}">
+                            <button type="submit" class="warn">{{ 'Resume product' if g.paused else 'Pause product' }}</button>
+                        </form>
+                        <form method="post" action="{{ url_for('remove_grant', grant_id=g.id) }}" onsubmit="return confirm('Remove this grant?')">
+                            <input type="hidden" name="dealer_id" value="{{ dealer.dealer_id }}">
+                            <button type="submit" class="danger">Remove grant</button>
+                        </form>
+                    </div>
+                </details>
             </td>
         </tr>
         {% endfor %}

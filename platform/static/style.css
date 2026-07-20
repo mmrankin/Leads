@@ -90,10 +90,16 @@ a{color:var(--accent)}
 .lnk-menu{position:absolute;z-index:30;top:100%;left:0;margin-top:5px;min-width:185px;
   background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:5px;
   box-shadow:0 8px 22px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:1px}
-.lnk-menu>a,.lnk-menu>button{display:block;width:100%;margin:0;padding:7px 10px;text-align:left;
+.lnk--right .lnk-menu{left:auto;right:0}
+.lnk-menu form{margin:0;display:block}
+.lnk-menu a,.lnk-menu button{display:block;width:100%;margin:0;padding:7px 10px;text-align:left;
   white-space:nowrap;background:none;border:none;border-radius:6px;cursor:pointer;
   font:inherit;font-size:.85rem;color:var(--txt);text-decoration:none}
-.lnk-menu>a:hover,.lnk-menu>button:hover{background:var(--panel);color:var(--accent)}
+.lnk-menu a:hover,.lnk-menu button:hover{background:var(--panel);color:var(--accent)}
+.lnk-menu .warn{color:var(--amber)}
+.lnk-menu .danger{color:var(--red)}
+.lnk-menu .warn:hover{background:var(--panel);color:var(--amber)}
+.lnk-menu .danger:hover{background:var(--panel);color:var(--red)}
 
 /* ── alerts ── */
 .alert{border-radius:12px;padding:12px 15px;margin-bottom:14px;border:1px solid;font-size:14px;
