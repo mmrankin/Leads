@@ -82,12 +82,17 @@
             <td>{{ g.product_code }}{% if g.paused %} <span style="color:#e0a83e;font-weight:700" title="Paused — grant kept, no sends">PAUSED</span>{% endif %}</td>
             <td>
                 {% if g.url %}
-                <a href="{{ g.url }}" target="_blank" rel="noopener">Open ↗</a>
-                <button type="button" class="link-btn copy-link" data-url="{{ g.url }}" title="Copy link">copy</button>
-                {% if g.embed %}
-                <br><button type="button" class="link-btn copy-embed" data-embed="{{ g.embed }}"
-                            title="Copy the iframe install code for this dealer's {{ g.product_code }} form">Copy Install Code</button>
-                {% endif %}
+                <details class="lnk">
+                    <summary>Links</summary>
+                    <div class="lnk-menu">
+                        <a href="{{ g.url }}" target="_blank" rel="noopener">Open form ↗</a>
+                        <button type="button" class="copy-link" data-url="{{ g.url }}">Copy link</button>
+                        {% if g.embed %}
+                        <button type="button" class="copy-embed" data-embed="{{ g.embed }}"
+                                title="Copy the iframe install code for this dealer's {{ g.product_code }} form">Copy Install Code</button>
+                        {% endif %}
+                    </div>
+                </details>
                 {% else %}—{% endif %}
             </td>
             <td>{{ g.valid_from or '—' }}</td>
@@ -339,6 +344,25 @@ document.querySelectorAll('.copy-embed').forEach(function (b) {
             .then(function () { var o = b.textContent; b.textContent = 'copied!'; setTimeout(function(){ b.textContent = o; }, 1400); })
             .catch(function () { window.prompt('Copy this install code:', code); });
     });
+});
+// "Links" dropdowns: close after a copy (once the confirmation has shown), when
+// another opens, and on any click outside or Escape.
+document.querySelectorAll('.lnk').forEach(function (d) {
+    d.querySelectorAll('.copy-link, .copy-embed').forEach(function (b) {
+        b.addEventListener('click', function () { setTimeout(function () { d.open = false; }, 1500); });
+    });
+    d.addEventListener('toggle', function () {
+        if (!d.open) return;
+        document.querySelectorAll('.lnk[open]').forEach(function (o) { if (o !== d) o.open = false; });
+    });
+});
+document.addEventListener('click', function (e) {
+    document.querySelectorAll('.lnk[open]').forEach(function (d) {
+        if (!d.contains(e.target)) d.open = false;
+    });
+});
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') document.querySelectorAll('.lnk[open]').forEach(function (d) { d.open = false; });
 });
 </script>
 {% endblock %}

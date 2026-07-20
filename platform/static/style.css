@@ -81,6 +81,20 @@ select option{background:var(--panel2);color:var(--txt)}
 .copy-link:hover{color:var(--accent)}
 a{color:var(--accent)}
 
+/* ── "Links" dropdown (dealer Product Access) ── */
+.lnk{position:relative;display:inline-block}
+.lnk>summary{cursor:pointer;color:var(--accent);white-space:nowrap;user-select:none;list-style:none}
+.lnk>summary::-webkit-details-marker{display:none}
+.lnk>summary::after{content:"▾";margin-left:5px;font-size:.85em}
+.lnk[open]>summary::after{content:"▴"}
+.lnk-menu{position:absolute;z-index:30;top:100%;left:0;margin-top:5px;min-width:185px;
+  background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:5px;
+  box-shadow:0 8px 22px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:1px}
+.lnk-menu>a,.lnk-menu>button{display:block;width:100%;margin:0;padding:7px 10px;text-align:left;
+  white-space:nowrap;background:none;border:none;border-radius:6px;cursor:pointer;
+  font:inherit;font-size:.85rem;color:var(--txt);text-decoration:none}
+.lnk-menu>a:hover,.lnk-menu>button:hover{background:var(--panel);color:var(--accent)}
+
 /* ── alerts ── */
 .alert{border-radius:12px;padding:12px 15px;margin-bottom:14px;border:1px solid;font-size:14px;
   background:rgba(226,75,74,.09);border-color:rgba(226,75,74,.4);color:#f08a89}
