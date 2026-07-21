@@ -629,7 +629,8 @@ def save_dealer():
     data["crm_type_id"] = int(crm) if crm else None
     src = (request.form.get("lead_source_id") or "").strip()
     data["lead_source_id"] = int(src) if src else None
-    for f in ("max_leads_per_day", "send_start_time", "send_end_time"):
+    for f in ("max_leads_per_day", "send_start_time", "send_end_time",
+              "lead_email_2", "lead_email_3", "alert_phone_1", "alert_phone_2"):
         data[f] = (request.form.get(f) or "").strip() or None
     if not (data["dealer_id"] and data["dealer_name"] and data["lead_email_address"]):
         flash("DealerID, Dealer Name and Lead Email Address are required.", "error")

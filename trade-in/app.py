@@ -133,7 +133,8 @@ def _open_trade_lead(dealer_id, dealer, data, validation=None):
         lead["offer_url"] = None
     adf_xml = build_adf(lead, dealer, valuation=None, product_code=PRODUCT_CODE)
     lead["adf_xml"] = adf_xml
-    status, detail = send_adf(dealer, adf_xml, lead_id="new", lead=lead, updated=False)
+    status, detail = send_adf(dealer, adf_xml, lead_id="new", lead=lead, updated=False,
+                              notify=True, product_code=PRODUCT_CODE)
     lead["email1_status"], lead["email1_detail"] = status, detail
     lead_id = db.insert_trade_lead(lead)
     db.set_email_status(lead_id, 1, status, detail)

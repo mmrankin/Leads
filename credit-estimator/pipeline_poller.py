@@ -198,7 +198,8 @@ def send_lead(row, require_phone=False):
     adf_xml = build_adf(lead, dealer, estimate=None,
                         product_code=pdb.PRODUCT_CREDIT_PIPELINE, subsource=subsource)
     db.update_adf(lead_id, adf_xml)
-    status, detail = send_adf(dealer, adf_xml, lead_id=lead_id, lead=lead)
+    status, detail = send_adf(dealer, adf_xml, lead_id=lead_id, lead=lead,
+                              notify=True, product_code=pdb.PRODUCT_CREDIT_PIPELINE)
     db.set_email_status(lead_id, 1, status, detail)
     # Record in the sent ledger keyed by dealers.id + match result_id.
     pdb.record_sent(row["dealers_id"], row["result_id"])

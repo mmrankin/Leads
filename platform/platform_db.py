@@ -64,6 +64,17 @@ def init_db():
                 "ALTER TABLE dbo.dealers ADD send_start_time VARCHAR(5) NULL")
     dlr.execute("IF COL_LENGTH('dbo.dealers', 'send_end_time') IS NULL "
                 "ALTER TABLE dbo.dealers ADD send_end_time VARCHAR(5) NULL")
+    # Up to two EXTRA lead delivery addresses beyond lead_email_address; every
+    # populated one receives the lead.
+    dlr.execute("IF COL_LENGTH('dbo.dealers', 'lead_email_2') IS NULL "
+                "ALTER TABLE dbo.dealers ADD lead_email_2 NVARCHAR(200) NULL")
+    dlr.execute("IF COL_LENGTH('dbo.dealers', 'lead_email_3') IS NULL "
+                "ALTER TABLE dbo.dealers ADD lead_email_3 NVARCHAR(200) NULL")
+    # Up to two numbers texted (Twilio) when a lead is delivered.
+    dlr.execute("IF COL_LENGTH('dbo.dealers', 'alert_phone_1') IS NULL "
+                "ALTER TABLE dbo.dealers ADD alert_phone_1 VARCHAR(20) NULL")
+    dlr.execute("IF COL_LENGTH('dbo.dealers', 'alert_phone_2') IS NULL "
+                "ALTER TABLE dbo.dealers ADD alert_phone_2 VARCHAR(20) NULL")
     for code, name, desc, source in DEFAULT_PRODUCTS:
         p = {"c": code, "n": name, "d": desc, "s": source}
         if dlr.one("SELECT 1 AS x FROM products WHERE product_code=%(c)s", p):
@@ -251,11 +262,56 @@ def list_dealers():
     return dlr.query("SELECT * FROM dealers ORDER BY dealer_name")
 
 
+# ----- lead delivery targets -----
+
+def lead_emails(dealer):
+    """Every populated lead delivery address for a dealer, primary first and
+    de-duplicated case-insensitively: lead_email_address + the two optional
+    extras. Empty list when none is configured."""
+    out, seen = [], set()
+    for key in ("lead_email_address", "lead_email_2", "lead_email_3"):
+        e = ((dealer or {}).get(key) or "").strip()
+        if e and e.lower() not in seen:
+            seen.add(e.lower())
+            out.append(e)
+    return out
+
+
+def _e164(v):
+    """A phone value normalized to E.164 for Twilio (+1XXXXXXXXXX for US
+    10-digit input), or None when it isn't a usable number."""
+    s = str(v or "").strip()
+    if not s:
+        return None
+    if s.startswith("+"):
+        digits = "".join(ch for ch in s[1:] if ch.isdigit())
+        return ("+" + digits) if len(digits) >= 10 else None
+    digits = "".join(ch for ch in s if ch.isdigit())
+    if len(digits) == 10:
+        return "+1" + digits
+    if len(digits) == 11 and digits[0] == "1":
+        return "+" + digits
+    return None
+
+
+def alert_phones(dealer):
+    """The dealer's lead-alert numbers in E.164, de-duplicated. Empty when none
+    is configured or the values aren't usable numbers."""
+    out, seen = [], set()
+    for key in ("alert_phone_1", "alert_phone_2"):
+        p = _e164((dealer or {}).get(key))
+        if p and p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out
+
+
 def upsert_dealer(data):
     fields = ("dealer_id", "dealer_name", "address", "city", "state",
               "zip", "phone", "lead_email_address", "banner_url",
               "crm_type_id", "lead_source_id", "max_leads_per_day",
-              "send_start_time", "send_end_time")
+              "send_start_time", "send_end_time", "lead_email_2", "lead_email_3",
+              "alert_phone_1", "alert_phone_2")
     v = {k: (data.get(k) if data.get(k) not in ("", None) else None) for k in fields}
     if dlr.one("SELECT 1 AS x FROM dealers WHERE dealer_id=%(dealer_id)s", v):
         dlr.execute(
@@ -265,16 +321,20 @@ def upsert_dealer(data):
             "crm_type_id=%(crm_type_id)s, lead_source_id=%(lead_source_id)s, "
             "max_leads_per_day=%(max_leads_per_day)s, "
             "send_start_time=%(send_start_time)s, send_end_time=%(send_end_time)s, "
+            "lead_email_2=%(lead_email_2)s, lead_email_3=%(lead_email_3)s, "
+            "alert_phone_1=%(alert_phone_1)s, alert_phone_2=%(alert_phone_2)s, "
             f"updated_at={NOW} WHERE dealer_id=%(dealer_id)s", v)
     else:
         dlr.execute(
             "INSERT INTO dealers (dealer_id, dealer_name, address, city, state, zip, "
             "phone, lead_email_address, banner_url, crm_type_id, lead_source_id, "
-            "max_leads_per_day, send_start_time, send_end_time) "
+            "max_leads_per_day, send_start_time, send_end_time, lead_email_2, "
+            "lead_email_3, alert_phone_1, alert_phone_2) "
             "VALUES (%(dealer_id)s, %(dealer_name)s, %(address)s, %(city)s, %(state)s, "
             "%(zip)s, %(phone)s, %(lead_email_address)s, %(banner_url)s, "
             "%(crm_type_id)s, %(lead_source_id)s, %(max_leads_per_day)s, "
-            "%(send_start_time)s, %(send_end_time)s)", v)
+            "%(send_start_time)s, %(send_end_time)s, %(lead_email_2)s, "
+            "%(lead_email_3)s, %(alert_phone_1)s, %(alert_phone_2)s)", v)
 
 
 # ----- products -----

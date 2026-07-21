@@ -24,11 +24,14 @@ ADF_BCC = [e.strip() for e in os.environ.get(
 LEAD_REPLY_TO = os.environ.get("LEAD_REPLY_TO", "noreply@rmadataplus.com")
 
 
-def _personalization(to_email):
-    """One SendGrid personalization: the dealer in To, the RMA team BCC'd.
-    Drops any BCC that duplicates the To address (SendGrid rejects duplicates)."""
-    p = {"to": [{"email": to_email}]}
-    bcc = [{"email": e} for e in ADF_BCC if e.lower() != to_email.lower()]
+def _personalization(to_emails):
+    """One SendGrid personalization: every configured dealer address in To, the
+    RMA team BCC'd. Drops any BCC that duplicates a To address (SendGrid
+    rejects duplicates)."""
+    tos = [to_emails] if isinstance(to_emails, str) else list(to_emails)
+    lowered = {t.lower() for t in tos}
+    p = {"to": [{"email": t} for t in tos]}
+    bcc = [{"email": e} for e in ADF_BCC if e.lower() not in lowered]
     if bcc:
         p["bcc"] = bcc
     return p
@@ -42,14 +45,36 @@ def _save_to_outbox(dealer, adf_xml, lead_id):
     return path
 
 
-def send_adf(dealer, adf_xml, lead_id, lead=None):
+def _lead_emails(dealer):
+    """Every lead delivery address configured for the dealer (primary + the two
+    optional extras). Falls back to leadEmailAddress alone if the shared helper
+    isn't importable."""
+    try:
+        import platform_db as pdb
+        return pdb.lead_emails(dealer)
+    except Exception:
+        e = (dealer.get("lead_email_address") or "").strip()
+        return [e] if e else []
+
+
+def _notify(dealer, lead, product_code):
+    """Text the dealer's lead-alert numbers. Best-effort; never raises."""
+    try:
+        import lead_notify
+        lead_notify.notify_lead_sent(dealer, lead, product_code)
+    except Exception:
+        pass
+
+
+def send_adf(dealer, adf_xml, lead_id, lead=None, notify=False, product_code=None):
     """Send the ADF/XML to the dealer's leadEmailAddress.
 
     Returns (status, detail) where status is 'sent', 'failed', or 'pending'.
     """
-    to_email = (dealer.get("lead_email_address") or "").strip()
-    if not to_email:
+    to_emails = _lead_emails(dealer)
+    if not to_emails:
         return "failed", "Dealer has no leadEmailAddress configured."
+    to_email = to_emails[0]
 
     api_key = os.environ.get("SENDGRID_API_KEY")
     from_email = os.environ.get("LEAD_FROM_EMAIL")
@@ -69,7 +94,7 @@ def send_adf(dealer, adf_xml, lead_id, lead=None):
 
     # The ADF/XML rides in the email body; no separate attachment is needed.
     payload = {
-        "personalizations": [_personalization(to_email)],
+        "personalizations": [_personalization(to_emails)],
         "from": {"email": from_email, "name": from_name},
         "reply_to": {"email": LEAD_REPLY_TO},
         "subject": subject,
@@ -99,6 +124,8 @@ def send_adf(dealer, adf_xml, lead_id, lead=None):
         return "failed", f"SendGrid request error: {exc}; ADF saved to {path}"
 
     if 200 <= resp.status_code < 300:
+        if notify:
+            _notify(dealer, lead, product_code)
         return "sent", f"SendGrid accepted (HTTP {resp.status_code})"
 
     path = _save_to_outbox(dealer, adf_xml, lead_id)

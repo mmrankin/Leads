@@ -29,11 +29,14 @@ ESTIMATOR_BCC = [e.strip() for e in os.environ.get(
 LEAD_REPLY_TO = os.environ.get("LEAD_REPLY_TO", "noreply@rmadataplus.com")
 
 
-def _personalization(to_email, bcc_list):
-    """One SendGrid personalization: the dealer in To, the given list BCC'd.
-    Drops any BCC that duplicates the To address (SendGrid rejects duplicates)."""
-    p = {"to": [{"email": to_email}]}
-    bcc = [{"email": e} for e in bcc_list if e.lower() != to_email.lower()]
+def _personalization(to_emails, bcc_list):
+    """One SendGrid personalization: every configured dealer address in To, the
+    given list BCC'd. Drops any BCC that duplicates a To address (SendGrid
+    rejects duplicates)."""
+    tos = [to_emails] if isinstance(to_emails, str) else list(to_emails)
+    lowered = {t.lower() for t in tos}
+    p = {"to": [{"email": t} for t in tos]}
+    bcc = [{"email": e} for e in bcc_list if e.lower() not in lowered]
     if bcc:
         p["bcc"] = bcc
     return p
@@ -57,16 +60,41 @@ def _lead_bcc():
         return ADF_BCC
 
 
-def send_adf(dealer, adf_xml, lead_id, lead=None, bcc=None):
-    """Send the ADF/XML to the dealer's leadEmailAddress. bcc overrides the BCC
-    list (defaults to the admin-editable Credit Pipeline lead BCC).
+def _lead_emails(dealer):
+    """Every lead delivery address configured for the dealer (primary + the two
+    optional extras). Falls back to leadEmailAddress alone if the shared helper
+    isn't importable."""
+    try:
+        import platform_db as pdb
+        return pdb.lead_emails(dealer)
+    except Exception:
+        e = (dealer.get("lead_email_address") or "").strip()
+        return [e] if e else []
+
+
+def _notify(dealer, lead, product_code):
+    """Text the dealer's lead-alert numbers. Best-effort; never raises."""
+    try:
+        import lead_notify
+        lead_notify.notify_lead_sent(dealer, lead, product_code)
+    except Exception:
+        pass
+
+
+def send_adf(dealer, adf_xml, lead_id, lead=None, bcc=None, notify=False,
+             product_code=None):
+    """Send the ADF/XML to every lead delivery address the dealer has configured
+    (leadEmailAddress + the two optional extras). bcc overrides the BCC list
+    (defaults to the admin-editable Credit Pipeline lead BCC). notify=True also
+    texts the dealer's lead-alert numbers once the email is away.
 
     Returns (status, detail) where status is 'sent', 'failed', or 'pending'.
     """
     bcc_list = _lead_bcc() if bcc is None else bcc
-    to_email = (dealer.get("lead_email_address") or "").strip()
-    if not to_email:
+    to_emails = _lead_emails(dealer)
+    if not to_emails:
         return "failed", "Dealer has no leadEmailAddress configured."
+    to_email = to_emails[0]
 
     api_key = os.environ.get("SENDGRID_API_KEY")
     from_email = os.environ.get("LEAD_FROM_EMAIL")
@@ -86,7 +114,7 @@ def send_adf(dealer, adf_xml, lead_id, lead=None, bcc=None):
 
     # The ADF/XML rides in the email body; no separate attachment is needed.
     payload = {
-        "personalizations": [_personalization(to_email, bcc_list)],
+        "personalizations": [_personalization(to_emails, bcc_list)],
         "from": {"email": from_email, "name": from_name},
         "reply_to": {"email": LEAD_REPLY_TO},
         "subject": subject,
@@ -113,6 +141,8 @@ def send_adf(dealer, adf_xml, lead_id, lead=None, bcc=None):
         return "failed", f"SendGrid request error: {exc}; ADF saved to {path}"
 
     if 200 <= resp.status_code < 300:
+        if notify:
+            _notify(dealer, lead, product_code)
         return "sent", f"SendGrid accepted (HTTP {resp.status_code})"
 
     path = _save_to_outbox(dealer, adf_xml, lead_id)

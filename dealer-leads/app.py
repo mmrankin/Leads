@@ -162,7 +162,8 @@ def lead_form(dealer_id):
     db.update_adf(lead_id, adf_xml)
 
     # Deliver the ADF/XML to the dealer's leadEmailAddress.
-    status, detail = send_adf(dealer, adf_xml, lead_id, lead=lead)
+    status, detail = send_adf(dealer, adf_xml, lead_id, lead=lead,
+                              notify=True, product_code=PRODUCT_CODE)
     db.update_lead_email_status(lead_id, status, detail)
 
     return redirect(url_for("thank_you", dealer_id=dealer_id))

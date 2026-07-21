@@ -172,7 +172,8 @@ def lead_form(dealer_id):
     adf_xml = build_adf(lead, dealer, estimate=None, product_code=PRODUCT_CODE)
     db.update_adf(lead_id, adf_xml)
     status, detail = send_adf(dealer, adf_xml, lead_id=lead_id, lead=lead,
-                              bcc=ESTIMATOR_BCC)
+                              bcc=ESTIMATOR_BCC, notify=True,
+                              product_code=pdb.PRODUCT_CREDIT_EST)
     db.set_email_status(lead_id, 1, status, detail)
 
     # Carry the contact/vehicle context into page 2 via the session.
@@ -392,7 +393,8 @@ def pipeline_form(dealer_id):
     adf_xml = build_adf(lead, dealer, estimate=None, product_code=PRODUCT_CODE,
                         subsource=PIPELINE_SUBSOURCE)
     db.update_adf(lead_id, adf_xml)
-    status, detail = send_adf(dealer, adf_xml, lead_id=lead_id, lead=lead)
+    status, detail = send_adf(dealer, adf_xml, lead_id=lead_id, lead=lead,
+                              notify=True, product_code=PRODUCT_CODE)
     db.set_email_status(lead_id, 1, status, detail)
 
     return redirect(url_for("pipeline_thanks", dealer_id=dealer_id))
@@ -485,7 +487,8 @@ def test_lead(dealer_id):
     adf_xml = build_adf(lead, dealer, estimate=None, product_code=PRODUCT_CODE,
                         subsource=form["subsource"])
     db.update_adf(lead_id, adf_xml)
-    status, detail = send_adf(dealer, adf_xml, lead_id=lead_id, lead=lead)
+    status, detail = send_adf(dealer, adf_xml, lead_id=lead_id, lead=lead,
+                              notify=True, product_code=PRODUCT_CODE)
     db.set_email_status(lead_id, 1, status, detail)
 
     return redirect(url_for("test_lead", dealer_id=dealer_id, sent="1"))

@@ -30,6 +30,28 @@
                 <input name="lead_email_address" value="{{ dealer.lead_email_address }}">
             </div>
         </div>
+        <div class="row">
+            <div class="field">
+                <label>Lead Email 2 <span class="optional">(optional)</span></label>
+                <input type="email" name="lead_email_2" value="{{ dealer.lead_email_2 or '' }}">
+            </div>
+            <div class="field">
+                <label>Lead Email 3 <span class="optional">(optional)</span></label>
+                <input type="email" name="lead_email_3" value="{{ dealer.lead_email_3 or '' }}">
+            </div>
+        </div>
+        <p class="subtitle" style="margin-top:-4px">Every populated address receives the lead.</p>
+        <div class="row">
+            <div class="field">
+                <label>Lead Alert Text 1 <span class="optional">(optional)</span></label>
+                <input type="tel" name="alert_phone_1" value="{{ dealer.alert_phone_1 or '' }}" placeholder="555-123-4567">
+            </div>
+            <div class="field">
+                <label>Lead Alert Text 2 <span class="optional">(optional)</span></label>
+                <input type="tel" name="alert_phone_2" value="{{ dealer.alert_phone_2 or '' }}" placeholder="555-123-4567">
+            </div>
+        </div>
+        <p class="subtitle" style="margin-top:-4px">These numbers get a text message each time a lead is sent to this dealer.</p>
         <div class="field">
             <label>Banner Image URL <span class="optional">(optional)</span></label>
             <input name="banner_url" value="{{ dealer.banner_url or '' }}" placeholder="https://...">
