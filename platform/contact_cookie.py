@@ -56,9 +56,16 @@ def persist(request, response):
     host = (request.host or "").split(":")[0]
     bare = COOKIE_DOMAIN.lstrip(".")
     domain = COOKIE_DOMAIN if (host == bare or host.endswith("." + bare)) else None
+    # The lead/trade/credit widgets are embedded cross-site in dealer pages, so a
+    # SameSite=Lax cookie would be dropped inside the iframe. SameSite=None needs
+    # Secure; Partitioned (CHIPS) keeps it working under third-party cookie
+    # blocking. Fall back to Lax on plain http (local dev) where Secure can't be set.
+    cross_site = request.is_secure
     response.set_cookie(
         COOKIE_NAME, quote(json.dumps(merged)),
         max_age=MAX_AGE, domain=domain, path="/",
-        secure=request.is_secure, httponly=True, samesite="Lax",
+        secure=request.is_secure, httponly=True,
+        samesite="None" if cross_site else "Lax",
+        partitioned=cross_site,
     )
     return response

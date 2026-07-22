@@ -55,6 +55,16 @@ ACCESS_PRODUCTS = (pdb.PRODUCT_CREDIT_PIPELINE, pdb.PRODUCT_CREDIT_EST)
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-change-me")
 
+# Embedded cross-site in dealer pages via <iframe>: the session cookie must be
+# SameSite=None + Secure or the browser drops it on form POSTs and the session
+# reads back empty. Partitioned (CHIPS) keeps it working under third-party cookie
+# blocking. Overridable via env for local http development.
+app.config.update(
+    SESSION_COOKIE_SAMESITE=os.environ.get("SESSION_COOKIE_SAMESITE", "None"),
+    SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "1") == "1",
+    SESSION_COOKIE_PARTITIONED=os.environ.get("SESSION_COOKIE_PARTITIONED", "1") == "1",
+)
+
 # Behind the Cloudflare Tunnel / reverse proxy: trust one hop of forwarded
 # headers so url_for(_external=True) yields https://<public-host>.
 from werkzeug.middleware.proxy_fix import ProxyFix

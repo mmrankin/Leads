@@ -65,6 +65,20 @@ def gen_serial(dealer_id):
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-change-me")
 
+# This widget is embedded in dealer sites via a CROSS-SITE <iframe>, so the
+# wizard's session cookie must be SameSite=None (+ Secure, which the browser
+# requires whenever SameSite=None). With Flask's default SameSite=Lax the browser
+# refuses to send the cookie on the step POSTs, the session reads back empty, and
+# the form bounces back to step 1 (year/make/model) — while working fine when the
+# page is opened top-level. Partitioned (CHIPS) gives the embed its own cookie jar
+# keyed to the embedding site, so it keeps working under Chrome's third-party
+# cookie blocking. Overridable via env for local http development.
+app.config.update(
+    SESSION_COOKIE_SAMESITE=os.environ.get("SESSION_COOKIE_SAMESITE", "None"),
+    SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "1") == "1",
+    SESSION_COOKIE_PARTITIONED=os.environ.get("SESSION_COOKIE_PARTITIONED", "1") == "1",
+)
+
 # Behind the Cloudflare Tunnel / reverse proxy: trust one hop of forwarded
 # headers so url_for(_external=True) yields https://<public-host>.
 from werkzeug.middleware.proxy_fix import ProxyFix
