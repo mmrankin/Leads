@@ -89,6 +89,18 @@ def _comments(lead, valuation):
         lines.append(f"  - Basis: {valuation.get('base_source')} "
                      f"({valuation.get('comp_count')} comps, "
                      f"mileage via {valuation.get('mileage_method')})")
+        # Show how the offer was derived from market when the dealer has set a
+        # margin: (market x %) - flat deduction, before condition adjustments.
+        pct = valuation.get("market_pct")
+        flat = valuation.get("flat_deduction") or 0
+        if valuation.get("market_value") is not None and ((pct is not None and pct != 100) or flat):
+            bits = [f"market ${valuation['market_value']:,}"]
+            if pct is not None and pct != 100:
+                bits.append(f"x {pct:g}% = ${valuation.get('pct_value', 0):,}")
+            if flat:
+                bits.append(f"less ${flat:,} dealer cost")
+            lines.append(f"  - Offer basis: {' '.join(bits)} "
+                         f"=> ${valuation.get('base_value', 0):,}")
         if valuation.get("adjustments"):
             adjs = ", ".join(f"{a['label']} ${a['amount']:,}" for a in valuation["adjustments"])
             lines.append(f"  - Condition adjustments: {adjs}")

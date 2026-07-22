@@ -1021,12 +1021,20 @@ def save_valuation():
             "base_source": request.form.get("base_source", "retail"),
             "adjustment_unit": request.form.get("adjustment_unit", "dollar")}
     # numeric fields
-    for f in ("range_spread", "mileage_rate") + pdb.CONDITION_ADJ_FIELDS:
+    for f in ("range_spread", "mileage_rate", "flat_deduction") + pdb.CONDITION_ADJ_FIELDS:
         raw = (request.form.get(f) or "").strip()
         try:
             data[f] = float(raw) if raw != "" else 0.0
         except ValueError:
             data[f] = 0.0
+    # % of market: a blank/garbage value must fall back to 100 (take market as-is),
+    # NOT 0 — a 0 here would quote every customer $0. Clamped to a sane 1–200.
+    raw_pct = (request.form.get("market_pct") or "").strip()
+    try:
+        pct = float(raw_pct) if raw_pct != "" else pdb.DEFAULT_MARKET_PCT
+    except ValueError:
+        pct = pdb.DEFAULT_MARKET_PCT
+    data["market_pct"] = min(max(pct, 1.0), 200.0)
     pdb.upsert_valuation_settings(data)
     flash("Saved valuation settings.", "ok")
     return redirect(url_for("dealer", dealer_id=dealer_id))

@@ -463,7 +463,13 @@ RECOMMENDED = {
 }
 
 ALL_SETTING_FIELDS = ("base_source", "adjustment_unit", "range_spread",
-                      "mileage_rate") + CONDITION_ADJ_FIELDS
+                      "mileage_rate", "market_pct", "flat_deduction") + CONDITION_ADJ_FIELDS
+
+# How the dealer's offer is derived from the market value, applied BEFORE the
+# condition adjustments: (market x market_pct%) - flat_deduction.
+# e.g. 90 + 1500 => a $10,000 market value becomes ($10,000 x .90) - $1,500.
+DEFAULT_MARKET_PCT = 100.0      # 100% = take the market value as-is
+DEFAULT_FLAT_DEDUCTION = 0.0    # no reconditioning/dealer-cost deduction
 
 
 def recommended_settings(unit):
@@ -474,9 +480,17 @@ def get_valuation_settings(dealer_id):
     row = dlr.one("SELECT * FROM dealer_valuation_settings WHERE dealer_id=%(d)s",
                   {"d": dealer_id})
     if row:
+        # Older rows predate these columns — fall back to the no-op defaults so
+        # existing dealers keep valuing exactly as before until they set them.
+        if row.get("market_pct") is None:
+            row["market_pct"] = DEFAULT_MARKET_PCT
+        if row.get("flat_deduction") is None:
+            row["flat_deduction"] = DEFAULT_FLAT_DEDUCTION
         return row
     defaults = {"dealer_id": dealer_id, "base_source": "retail",
-                "adjustment_unit": "dollar"}
+                "adjustment_unit": "dollar",
+                "market_pct": DEFAULT_MARKET_PCT,
+                "flat_deduction": DEFAULT_FLAT_DEDUCTION}
     defaults.update(RECOMMENDED["dollar"])
     return defaults
 

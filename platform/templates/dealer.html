@@ -244,6 +244,26 @@
                 </select>
             </div>
         </div>
+        <h3>Offer From Market <span class="optional">(applied before condition adjustments)</span></h3>
+        <p class="subtitle" style="margin:-4px 0 12px">
+            The offer starts at <strong>(market value &times; % of market) &minus; flat deduction</strong>,
+            then condition adjustments move it up or down.
+            Example: a $10,000 market value at <strong>90%</strong> less <strong>$1,500</strong> starts at
+            <strong>$7,500</strong>. Leave at 100% / $0 to offer market value as-is.
+        </p>
+        <div class="row">
+            <div class="field">
+                <label>% of Market Value</label>
+                <input type="number" step="any" min="1" max="200" name="market_pct"
+                       value="{{ vs.market_pct if vs.market_pct is not none else 100 }}">
+            </div>
+            <div class="field">
+                <label>Flat Deduction ($ — dealer cost / recon)</label>
+                <input type="number" step="any" min="0" name="flat_deduction"
+                       value="{{ vs.flat_deduction if vs.flat_deduction is not none else 0 }}">
+            </div>
+        </div>
+
         <div class="row">
             <div class="field">
                 <label>Displayed Range Spread (± in unit)</label>

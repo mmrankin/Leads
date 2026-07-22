@@ -260,6 +260,17 @@ def _to_int(x, default=None):
         return default
 
 
+def _to_float(x, default=0.0):
+    """Float from a setting that may be None/blank/'1,500' — `default` on failure
+    (so a dealer who hasn't set a margin still values at 100% / no deduction)."""
+    if x is None or str(x).strip() == "":
+        return default
+    try:
+        return float(str(x).replace(",", "").replace("$", "").replace("%", "").strip())
+    except (TypeError, ValueError):
+        return default
+
+
 CONDITION_MAP = [
     # (settings_key, lead_field, triggers_when, label)
     ("adj_keys_1", "num_keys", lambda v: v == "1", "Only 1 key"),
@@ -360,7 +371,20 @@ def compute_value(lead, settings):
         result["mileage_per_mile"] = -rate
     # guard against pathological extrapolation
     base = max(base, 0.0)
-    result["base_value"] = round(base)
+    result["market_value"] = round(base)          # what the comps say, pre-margin
+
+    # ----- dealer margin: (market x market_pct%) - flat_deduction -----
+    # Applied BEFORE the condition adjustments, so the dealer can offer e.g. 90%
+    # of market less $1,500 of reconditioning/dealer cost, and the condition
+    # adjustments then move that number up or down.
+    market_pct = _to_float(settings.get("market_pct"), 100.0)
+    flat_deduction = _to_float(settings.get("flat_deduction"), 0.0)
+    pct_value = base * (market_pct / 100.0)
+    base = max(pct_value - flat_deduction, 0.0)
+    result["market_pct"] = market_pct
+    result["flat_deduction"] = round(flat_deduction)
+    result["pct_value"] = round(pct_value)
+    result["base_value"] = round(base)            # working base for adjustments
 
     # ----- condition adjustments -----
     unit = settings.get("adjustment_unit", "dollar")
