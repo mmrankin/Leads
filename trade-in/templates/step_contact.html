@@ -10,6 +10,7 @@
     {% if errors.contact %}<div class="alert">{{ errors.contact }}</div>{% endif %}
 
     <form method="post" action="{{ url_for('step_contact', dealer_id=dealer.dealer_id) }}" novalidate>
+      <input type="hidden" name="sid" value="{{ sid }}">
         <div class="row">
             <div class="field"><label for="first_name">First Name</label>
                 <input type="text" id="first_name" name="first_name" value="{{ form.first_name or '' }}"></div>

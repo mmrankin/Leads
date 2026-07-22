@@ -95,6 +95,11 @@ def _ensure_db():
     if not getattr(app, "_db_ready", False):
         pdb.init_db()
         db.init_db()
+        try:
+            db.init_wizard_state()          # cookie-free wizard state (see below)
+            db.purge_wizard_state(WIZARD_TTL_HOURS)
+        except Exception:                   # never block a lead over housekeeping
+            pass
         app._db_ready = True
 
 
@@ -120,13 +125,63 @@ def _session_key(dealer_id):
     return f"tradein:{dealer_id}"
 
 
+# ----- wizard state: server-side token, so no cookie is required -----
+#
+# Embedded cross-site in a dealer page, Safari (and any browser blocking
+# third-party cookies) won't carry the session cookie between steps, so the form
+# would bounce back to step 1. The wizard therefore keys its state off a random
+# token ("sid") that rides in the form POST and the redirect URL. The cookie
+# session is still written/read as a fallback, so nothing regresses where cookies
+# do work (and for links that arrive with no token).
+
+WIZARD_TTL_HOURS = int(os.environ.get("TRADE_WIZARD_TTL_HOURS", "12"))
+
+
+def _new_sid():
+    return secrets.token_urlsafe(24)
+
+
+def _sid_or_new():
+    """The wizard token from this request (POST body or query string), else a new one."""
+    return (request.form.get("sid") or request.args.get("sid") or "").strip() or _new_sid()
+
+
+def _load_state(dealer_id, sid):
+    """Wizard state: server-side store first (works with NO cookies at all), then
+    the cookie session as a fallback."""
+    if sid:
+        try:
+            st = db.get_wizard_state(sid)
+            if st is not None:
+                return st
+        except Exception:                            # store hiccup -> fall back to cookie
+            pass
+    try:
+        return session.get(_session_key(dealer_id), {}) or {}
+    except Exception:
+        return {}
+
+
+def _save_state(dealer_id, sid, data):
+    """Persist server-side (cookie-free) AND to the cookie session (harmless)."""
+    if sid:
+        try:
+            db.put_wizard_state(sid, dealer_id, data)
+        except Exception:
+            pass
+    try:
+        session[_session_key(dealer_id)] = data
+    except Exception:
+        pass
+
+
 def dealer_maps_url(dealer):
     parts = [dealer.get("address"), dealer.get("city"), dealer.get("state"), dealer.get("zip")]
     addr = ", ".join(p for p in parts if p) or dealer.get("dealer_name", "")
     return addr
 
 
-def _open_trade_lead(dealer_id, dealer, data, validation=None):
+def _open_trade_lead(dealer_id, dealer, data, validation=None, sid=None):
     """Create the trade lead and send the initial ADF (#1), recording the new
     lead_id in the session. Shared by the normal contact step and the
     Credit-Estimator handoff (which skips the contact step)."""
@@ -154,7 +209,7 @@ def _open_trade_lead(dealer_id, dealer, data, validation=None):
     db.set_email_status(lead_id, 1, status, detail)
     data["lead_id"] = lead_id
     data["serial"] = serial
-    session[_session_key(dealer_id)] = data
+    _save_state(dealer_id, sid, data)
     return lead_id
 
 
@@ -163,6 +218,7 @@ def _open_trade_lead(dealer_id, dealer, data, validation=None):
 @app.route("/t/<dealer_id>", methods=["GET", "POST"])
 def step_vehicle(dealer_id):
     dealer = _require_active_dealer(dealer_id)
+    sid = _sid_or_new()
     if request.method == "GET":
         # allow ?year=&make=&model=&trim= prefill
         prefill = {}
@@ -171,7 +227,7 @@ def step_vehicle(dealer_id):
             v = (request.args.get(short) or "").strip()
             if v:
                 prefill[full] = v
-        saved = session.get(_session_key(dealer_id), {})
+        saved = _load_state(dealer_id, sid)
         # Handoff from the Credit Estimator (ho=1): contact was already collected,
         # so stash it and flag the session to bypass the contact step.
         if request.args.get("ho") == "1":
@@ -182,10 +238,10 @@ def step_vehicle(dealer_id):
                 "phone": (request.args.get("phone") or "").strip(),
                 "tc_agreed": 1, "handoff": True,
             })
-            session[_session_key(dealer_id)] = saved
+            _save_state(dealer_id, sid, saved)
         form = {**saved, **prefill}
         return render_template("step_vehicle.html", dealer=dealer, form=form,
-                               ymm=vin_db.is_enabled(), step=1)
+                               ymm=vin_db.is_enabled(), step=1, sid=sid)
 
     form = {k: (request.form.get(k) or "").strip() for k in (
         "vehicle_year", "vehicle_make", "vehicle_model", "vehicle_trim")}
@@ -194,15 +250,15 @@ def step_vehicle(dealer_id):
         errors["vehicle"] = "Please choose your vehicle's year, make, and model."
     if errors:
         return render_template("step_vehicle.html", dealer=dealer, form=form,
-                               errors=errors, ymm=vin_db.is_enabled(), step=1), 400
-    data = session.get(_session_key(dealer_id), {})
+                               errors=errors, ymm=vin_db.is_enabled(), step=1, sid=sid), 400
+    data = _load_state(dealer_id, sid)
     data.update(form)
-    session[_session_key(dealer_id)] = data
+    _save_state(dealer_id, sid, data)
     # Contact handed off from the Credit Estimator → skip the contact step.
     if data.get("handoff") and (data.get("email") or data.get("phone")):
-        _open_trade_lead(dealer_id, dealer, data)
-        return redirect(url_for("step_condition", dealer_id=dealer_id))
-    return redirect(url_for("step_contact", dealer_id=dealer_id))
+        _open_trade_lead(dealer_id, dealer, data, sid=sid)
+        return redirect(url_for("step_condition", dealer_id=dealer_id, sid=sid))
+    return redirect(url_for("step_contact", dealer_id=dealer_id, sid=sid))
 
 
 # ----- step 2: contact (creates lead + sends ADF #1) -----
@@ -210,15 +266,16 @@ def step_vehicle(dealer_id):
 @app.route("/t/<dealer_id>/contact", methods=["GET", "POST"])
 def step_contact(dealer_id):
     dealer = _require_active_dealer(dealer_id)
-    data = session.get(_session_key(dealer_id), {})
+    sid = _sid_or_new()
+    data = _load_state(dealer_id, sid)
     if not data.get("vehicle_model"):
-        return redirect(url_for("step_vehicle", dealer_id=dealer_id))
+        return redirect(url_for("step_vehicle", dealer_id=dealer_id, sid=sid))
 
     if request.method == "GET":
         # Pre-fill from the shared cross-product cookie; session data wins.
         form = {**contact_cookie.read(request), **data}
         return render_template("step_contact.html", dealer=dealer, form=form,
-                               errors={}, step=2)
+                               errors={}, step=2, sid=sid)
 
     form = {k: (request.form.get(k) or "").strip() for k in
             ("first_name", "last_name", "email", "phone")}
@@ -239,15 +296,15 @@ def step_contact(dealer_id):
                                "Please check it, or leave it blank and provide a phone.")
     if errors:
         return render_template("step_contact.html", dealer=dealer,
-                               form={**data, **form}, errors=errors, step=2), 400
+                               form={**data, **form}, errors=errors, step=2, sid=sid), 400
 
     data.update(form)
     data["tc_agreed"] = 1
-    session[_session_key(dealer_id)] = data
+    _save_state(dealer_id, sid, data)
 
     # Create the lead now and send the initial ADF.
-    _open_trade_lead(dealer_id, dealer, data, validation)
-    return redirect(url_for("step_condition", dealer_id=dealer_id))
+    _open_trade_lead(dealer_id, dealer, data, validation, sid=sid)
+    return redirect(url_for("step_condition", dealer_id=dealer_id, sid=sid))
 
 
 # ----- step 3: condition (value + sends updated ADF #2) -----
@@ -262,18 +319,19 @@ CONDITION_FORM_FIELDS = (
 @app.route("/t/<dealer_id>/condition", methods=["GET", "POST"])
 def step_condition(dealer_id):
     dealer = _require_active_dealer(dealer_id)
-    data = session.get(_session_key(dealer_id), {})
+    sid = _sid_or_new()
+    data = _load_state(dealer_id, sid)
     if not data.get("lead_id"):
-        return redirect(url_for("step_vehicle", dealer_id=dealer_id))
+        return redirect(url_for("step_vehicle", dealer_id=dealer_id, sid=sid))
 
     if request.method == "GET":
         return render_template("step_condition.html", dealer=dealer, form=data,
                                lease_months=[str(i) for i in range(1, 37)] + ["37+"],
-                               step=3)
+                               step=3, sid=sid)
 
     form = {k: (request.form.get(k) or "").strip() for k in CONDITION_FORM_FIELDS}
     data.update(form)
-    session[_session_key(dealer_id)] = data
+    _save_state(dealer_id, sid, data)
     lead_id = data["lead_id"]
 
     # Build the full lead record for valuation + ADF.
@@ -299,8 +357,9 @@ def step_condition(dealer_id):
     db.set_email_status(lead_id, 2, status, detail)
 
     # Stash the valuation for the thank-you page.
-    session[_session_key(dealer_id)]["valuation"] = result
-    return redirect(url_for("thank_you", dealer_id=dealer_id))
+    data["valuation"] = result
+    _save_state(dealer_id, sid, data)
+    return redirect(url_for("thank_you", dealer_id=dealer_id, sid=sid))
 
 
 # ----- thank you -----
@@ -308,7 +367,7 @@ def step_condition(dealer_id):
 @app.route("/t/<dealer_id>/thanks")
 def thank_you(dealer_id):
     dealer = _require_active_dealer(dealer_id)
-    data = session.get(_session_key(dealer_id), {})
+    data = _load_state(dealer_id, _sid_or_new())
     result = data.get("valuation")
 
     # Vehicle description (Year Make Model Trim) for the market-units section.

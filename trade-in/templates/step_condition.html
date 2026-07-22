@@ -17,6 +17,7 @@
     <p class="subtitle">This fine-tunes your estimate. Tap your answers.</p>
 
     <form method="post" action="{{ url_for('step_condition', dealer_id=dealer.dealer_id) }}">
+      <input type="hidden" name="sid" value="{{ sid }}">
         <div class="q"><label>Miles on the car</label>
             <input type="number" inputmode="numeric" name="miles" value="{{ form.miles or '' }}" placeholder="e.g. 45000"></div>
 

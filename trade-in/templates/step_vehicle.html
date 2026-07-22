@@ -8,6 +8,7 @@
     {% if errors and errors.vehicle %}<div class="alert">{{ errors.vehicle }}</div>{% endif %}
 
     <form method="post" action="{{ url_for('step_vehicle', dealer_id=dealer.dealer_id) }}" novalidate>
+      <input type="hidden" name="sid" value="{{ sid }}">
     {% if ymm %}
         <div class="field">
             <label for="vehicle_year">Year</label>

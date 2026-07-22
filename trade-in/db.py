@@ -6,6 +6,7 @@ inv_prefix_count) stay in a small LOCAL SQLite file for instant lookups.
 Public function names/signatures are unchanged.
 """
 
+import json
 import os
 import sqlite3
 
@@ -210,3 +211,50 @@ def inv_count_rows():
         return conn.execute("SELECT COUNT(*) FROM inv_prefix_count").fetchone()[0]
     finally:
         conn.close()
+
+
+# ----- wizard state (cookie-free) -----
+#
+# The trade widget is embedded cross-site in dealer pages, where Safari (and any
+# browser blocking third-party cookies) refuses to carry the Flask session cookie
+# between wizard steps — the form would bounce back to step 1. So the wizard's
+# state also lives server-side, keyed by a random token ("sid") carried in the
+# form POST / redirect URL instead of a cookie. Lives in dlrPro alongside the
+# leads; rows are short-lived and purged by age.
+
+def init_wizard_state():
+    """Create the wizard-state table if it isn't there yet."""
+    dlr.execute("""IF OBJECT_ID('dbo.trade_wizard_state','U') IS NULL
+        CREATE TABLE dbo.trade_wizard_state (
+            sid varchar(64) NOT NULL PRIMARY KEY,
+            dealer_id varchar(50) NULL,
+            data nvarchar(max) NULL,
+            created datetime NOT NULL DEFAULT GETDATE(),
+            updated datetime NOT NULL DEFAULT GETDATE())""")
+
+
+def get_wizard_state(sid):
+    """The stored dict for this token, or None when there's no row yet."""
+    row = dlr.one("SELECT data FROM trade_wizard_state WHERE sid=%(s)s", {"s": sid})
+    if not row or not row.get("data"):
+        return None
+    try:
+        return json.loads(row["data"])
+    except (ValueError, TypeError):
+        return None
+
+
+def put_wizard_state(sid, dealer_id, data):
+    """Upsert the state for this token."""
+    dlr.execute(
+        "UPDATE trade_wizard_state SET data=%(d)s, dealer_id=%(dl)s, updated=GETDATE() "
+        "WHERE sid=%(s)s "
+        "IF @@ROWCOUNT = 0 "
+        "INSERT INTO trade_wizard_state (sid, dealer_id, data) VALUES (%(s)s, %(dl)s, %(d)s)",
+        {"s": sid, "dl": dealer_id, "d": json.dumps(data, default=str)})
+
+
+def purge_wizard_state(hours=12):
+    """Drop abandoned wizard state older than `hours`."""
+    dlr.execute("DELETE FROM trade_wizard_state "
+                "WHERE updated < DATEADD(hour, -%d, GETDATE())" % int(hours))

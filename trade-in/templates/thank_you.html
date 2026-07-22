@@ -32,7 +32,9 @@
     </div>
 </div>
 
-{% if valuation and valuation.similar_count is not none %}
+{# .get() (not .similar_count) — a failed valuation returns early without the key,
+   and Jinja's Undefined passes an "is not none" test, then blows up in format(). #}
+{% if valuation and valuation.get('similar_count') is not none %}
 <div class="card">
     {% if vehicle_desc %}<p class="metric-vehicle">{{ vehicle_desc }}</p>{% endif %}
     <div class="metric-row">
