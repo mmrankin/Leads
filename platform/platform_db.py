@@ -895,6 +895,37 @@ def sent_today(dealers_id):
     return int(row["c"]) if row else 0
 
 
+def daily_cap_for(dealer_id, dealers_id, on_date=None):
+    """A dealer's send allowance for today: an explicit per-grant max/day when set,
+    else the monthly max paced evenly over the days left in the month. Mirrors the
+    automated poller's daily-cap math so both paths agree."""
+    import calendar
+    day = on_date or date.today()
+    day_max = pipeline_max_leads_per_day(dealer_id, on_date)
+    if day_max is not None:
+        return int(day_max)
+    cap = pipeline_max_leads(dealer_id, on_date)
+    days_left = calendar.monthrange(day.year, day.month)[1] - day.day + 1
+    before_today = sent_this_month(dealers_id) - sent_today(dealers_id)
+    return max(0, -(-(cap - before_today) // days_left))
+
+
+def cap_block_reason(dealer_id, dealers_id, on_date=None):
+    """None when a Credit Pipeline send is within the dealer's caps, else a short
+    reason. Enforces the monthly hard ceiling and today's daily allowance — the
+    SAME limits the automated flow applies — so a manual 'Send lead' can't push a
+    dealer past them."""
+    cap = pipeline_max_leads(dealer_id, on_date)
+    month = sent_this_month(dealers_id)
+    if month >= cap:
+        return "monthly cap reached (%d/%d)" % (month, cap)
+    dcap = daily_cap_for(dealer_id, dealers_id, on_date)
+    today_n = sent_today(dealers_id)
+    if today_n >= dcap:
+        return "daily cap reached (%d/%d today)" % (today_n, dcap)
+    return None
+
+
 def sent_today_total():
     """Count of Credit Pipeline leads sent across all dealers since midnight today."""
     row = dlr.one(

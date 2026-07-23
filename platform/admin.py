@@ -352,6 +352,17 @@ def append_diag(result_id):
 
 @app.route("/append/send/<int:result_id>", methods=["POST"])
 @require_login
+def _cp_cap_block(row):
+    """Reason a manual Credit Pipeline send is blocked by the dealer's daily or
+    monthly cap, or None to allow it — so the 'Send lead' buttons honor the same
+    caps as the automated flow. Fail-open on a cap-calc error (never lose a lead
+    to a counting glitch)."""
+    try:
+        return pdb.cap_block_reason(row.get("dealer_id"), row.get("dealers_id"))
+    except Exception:                                # noqa: BLE001
+        return None
+
+
 def append_send(result_id):
     """Send one appended lead to its dealer (from the Appended report)."""
     if not _CP_SEND_OK:
@@ -364,6 +375,10 @@ def append_send(result_id):
     ok, reason = _cp_eligible(row)
     if not ok:
         flash(f"Result #{result_id} not sent — {reason}.", "error")
+        return redirect(url_for("append_report"))
+    cap = _cp_cap_block(row)
+    if cap:
+        flash(f"Result #{result_id} not sent — {cap}.", "error")
         return redirect(url_for("append_report"))
     status, detail, lead_id = _cp_send_lead(row)
     flash(f"Result #{result_id}: {status} — {detail}",
@@ -836,6 +851,10 @@ def trigger_send():
     if not ok:
         flash(f"Result #{result_id} not sent — {reason}.", "error")
         return redirect(url_for("trigger_leads", **keep))
+    cap = _cp_cap_block(row)
+    if cap:
+        flash(f"Result #{result_id} not sent — {cap}.", "error")
+        return redirect(url_for("trigger_leads", **keep))
     status, detail, lead_id = _cp_send_lead(row)
     if status in ("sent", "pending"):
         flash(f"Lead sent to {row.get('dealer_name')} (result #{result_id}, {status}).", "ok")
@@ -939,6 +958,10 @@ def lead_flow_send(result_id):
     ok, reason = _cp_eligible(row)
     if not ok:
         flash(f"Not sent — {reason}.", "error")
+        return redirect(url_for("lead_flow", result_id=result_id))
+    cap = _cp_cap_block(row)
+    if cap:
+        flash(f"Not sent — {cap}.", "error")
         return redirect(url_for("lead_flow", result_id=result_id))
     status, detail, lead_id = _cp_send_lead(row)
     ok_send = status in ("sent", "pending")
